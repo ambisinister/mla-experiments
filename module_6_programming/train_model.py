@@ -39,25 +39,23 @@ def plot_loss_curve(x, y):
     plt.savefig("./training_curve.png")
 
 def train():
-
-    device = torch.device("cpu") # go back to gpu soon
-    
-    # adjust as needed
+    device = torch.device("cuda")    
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 
     model = model.to(device)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=6e-4) # lr of gpt-2-small
-    scheduler = cosine_with_warmup_lr_scheduler(opt, 1000, 256)
+    batch_size = 128
+    opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) # lr of gpt-2-small
+    total_steps = 1e8 / batch_size
+    scheduler = cosine_with_warmup_lr_scheduler(opt, total_steps, int(total_steps * 0.01))
     loss_fn = torch.nn.CrossEntropyLoss()
 
     with open('packed_data.npy', 'rb') as f:
         data = np.load(f)
 
     # We have to batch the data
-    batch_size = 8
     full_batches = np.shape(data)[0] // batch_size
     batched_data = data[:full_batches * batch_size].reshape(-1, batch_size, np.shape(data)[-1])
 
@@ -71,9 +69,9 @@ def train():
         opt.zero_grad()
 
         dat = batch[:, :-1]
-        dat = torch.tensor(dat)
+        dat = torch.tensor(dat).to(device)
         targ = batch[:, 1:]
-        targ = torch.tensor(targ)
+        targ = torch.tensor(targ).to(device)
 
         out = model(dat)
         out = out.permute(0, 2, 1)
