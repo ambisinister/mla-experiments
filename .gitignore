@@ -4,4 +4,4 @@ __pycache__/
 *.npy
 data.txt
 hftokenizer/
-*/venv
+venv/
