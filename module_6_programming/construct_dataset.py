@@ -1,0 +1,71 @@
+import torch
+from tqdm import tqdm
+import numpy as np
+from hftokenizer import HFTokenizer
+
+
+def construct_dataset(data_txt_file, sequence_length=256):
+    '''
+    data_txt_file : a string path to a text file containing training data, one sample per line
+    sequence_length : int, the desired length of each training sequence
+
+    This method should use the trained tokenizer to convert samples to token_ids, and
+    then pack them into a training set represented as a 2D array of size (sequences, sequence_length+1).
+    The +1 is very important! It lets us compare our model outputs to the sequence shifted by one.
+
+    You can save this training set in whatever format you wish for loading into the training script.
+    I recommend using numpy's np.save() method or the pickle module.
+
+    The saved data should be shuffled so we can directly load it and train on it in the training script.
+    '''
+
+    # construct tokenizer
+    tokenizer = HFTokenizer()
+    tokenizer.load()
+
+    # get all samples
+    print("loading data...")
+    f = open(data_txt_file, "r")
+    samples = f.readlines()
+
+    # ----------------------------------------
+    dataset = []
+    packed_sequence = []
+    sample_idx = 0
+    i = 0
+    while sample_idx < len(samples):
+        if sample_idx % 10000 == 0:
+            print(f"{sample_idx/len(samples)}")
+        f = samples[sample_idx]
+        t = tokenizer.encode(f)
+        
+        t_len = len(t)
+        current_len = len(packed_sequence)
+
+        while current_len < sequence_length and i < t_len:
+            packed_sequence.append(t[i])
+            i += 1
+            current_len += 1
+
+        if i == t_len:
+            sample_idx += 1
+            i = 0
+        if current_len == sequence_length:
+            packed_sequence.append(0)
+            dataset.append(packed_sequence)
+            packed_sequence = []
+
+    dataset = np.array(dataset)
+    np.random.shuffle(dataset)
+    print(np.shape(dataset))
+
+    with open('./packed_data.npy', 'wb') as f:
+        np.save(f, dataset)
+    
+    #for f in dataset:
+    #    print(tokenizer.decode(f))
+    #    print("~~~~~~~")
+
+
+if __name__ == "__main__":
+    construct_dataset("./data.txt", 256)

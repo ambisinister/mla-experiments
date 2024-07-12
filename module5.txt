@@ -1,0 +1,42 @@
+Module 5
+Reading and Short Answer Assignment
+
+Assigned: Wednesday, 05/29/2024
+Due: Wednesday, 06/05/2024 by 11:59:59 PM
+
+This week your assignment is to read the article “Transformers from Scratch” by Peter Bloem.
+Note that while this provides a great explanation of transformers, some of the specifics are
+slightly dated. If you see an implementation discrepancy between this article and our class
+lecture notes, please defer to the lecture notes.
+https://peterbloem.nl/blog/transformers
+
+Questions
+
+Please write a short response (4-5 sentences / short paragraph) to each of the following
+questions / the following question. Your responses will be graded for accuracy, critical thinking,
+and clarity. You may use any common word processing or text format. Please upload your
+answers by the due date.
+
+Question 1: What are the main differences between “modern” transformers and the original
+encoder/decoder transformer (“historical baggage” as Bloem calls it)? Why has the model
+architecture changed?
+
+The biggest difference between the original encoder/decoder
+transformer and the transformers (for language models) of today is
+that modern GPT-inspired architectures do not use encoders at all. In
+the original transformer paper, there was an entire encoder module
+whose job it was to create a latent embedding which the decoder would
+use to make predictions, but modern transformers (for language
+modeling tasks in particular) have found that just using the decoder
+seems to work better (namely, that using the parameters for the
+encoder on making a bigger decoder would improve performance). It was
+originally like this because sequence-to-sequence models of the day
+were largely designed around this encoder-decoder architecture, so it
+was a major discovery to determine that good performance could be
+achieved with no latent embedding. There are some other more nuanced
+changes to the vanilla transformer as well, most big language models
+nowadays don't use linear activation (most use GLU variants like
+SwiGLU https://arxiv.org/pdf/2002.05202) and KV-cache-optimized
+attention variants like group-query attention
+(https://arxiv.org/pdf/2305.13245) which have become necessary as
+model size has exploded significantly.
