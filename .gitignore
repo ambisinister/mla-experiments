@@ -1,7 +1,7 @@
 .DS_Store
-*/__pycache__/*
+__pycache__/
 *.pt
 *.npy
-*/data.txt
-*/hftokenizer
+data.txt
+hftokenizer/
 */venv

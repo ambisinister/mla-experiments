@@ -1,0 +1,14 @@
+Questions
+
+Please write a short response (4-5 sentences / short paragraph) to
+each of the following questions / the following question. Your
+responses will be graded for accuracy, critical thinking, and
+clarity. You may use any common word processing or text format. Please
+upload your answers by the due date.
+
+
+Question 1: Explain how a byte-level BPE is able to tokenize a character it has never seen before (i.e. an emoji).
+
+In unicode, a character is mapped to a series of bytes, where the encoding dictates how many bytes corresponds to a single character. For example, if it takes 2 bytes, that can represent 2^16 possible values (65,536), and if it takes 4 bytes, it can hold 2^32 values.
+
+In byte-level BPE, you start with the possible values of 1 byte, rather than each individual character. This way the base vocabulary is only 256 values, but you can capture any unicode character by composing those byte tokens together. That way you can train a tokenizer to learn common characters the same way you do for common words (e.g. learn "a" as a very common composition of n bytes). If you see an emoji, that's a very rare combination of (for example) 4 bytes, so if you've never seen it before, it just gets tokenized as the bytes needed to display the character. 
