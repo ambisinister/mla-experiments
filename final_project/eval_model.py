@@ -20,7 +20,8 @@ def calculate_perplexity(model, data, batch_size, device):
             targets = torch.tensor(batch[:, 1:]).to(device)
             
             outputs = model(inputs)
-            loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)), targets.view(-1), reduction='sum')
+            loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)),
+                                                     targets.view(-1), reduction='sum')
             
             total_loss += loss.item()
             total_tokens += np.prod(targets.size())

@@ -78,6 +78,12 @@ There are three primary advantages to using MLA over normal multi-head attention
 2. Reduced KV Cache
 3. Greater expressivity w/ same parameter count
 
+| Model Description | Training Perplexity | KV Cache Size |
+|-------------------+---------------------+---------------|
+| MHA 35M           |                  99 |           999 |
+| MLA 31M           |                  99 |             0 |
+| MLA 34.6M         |                  99 |             0 |
+
 Experiment 1 focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it. 
 
 Experiment 2 focuses on the third of these -- We use an explicitly "larger" model with roughly the same number of parameters. In this case, we spend our advantage from saved parameters on more layers. 

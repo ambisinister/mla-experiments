@@ -31,7 +31,7 @@ def train():
     # using nvidia rtx 3090, all left the same as originally
     # 35M parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GPTModel(d_model=512, n_heads=16, layers=9, vocab_size=10000, max_seq_len=256)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 
@@ -50,24 +50,20 @@ def train():
     with open('packed_data.npy', 'rb') as f:
         data = np.load(f)
 
-    # We have to batch the data
-    full_batches = np.shape(data)[0] // batch_size
-    batched_data = data[:full_batches * batch_size].reshape(-1, batch_size, np.shape(data)[-1])
-
     #logging
     total_tokens = 0
     train_losses_y = []
     train_losses_x = []
 
     # epochs = 1
-    for i,batch in enumerate(batched_data):
+    for i in range(0, len(data) - batch_size, batch_size):
         opt.zero_grad()
+        # batch the data
+        batch = data[i:i + batch_size]
 
         # offsets, converting to tensor, and sending to gpu
-        dat = batch[:, :-1]
-        dat = torch.tensor(dat).to(device)
-        targ = batch[:, 1:]
-        targ = torch.tensor(targ).to(device)
+        dat = torch.tensor(batch[:, :-1]).to(device)
+        targ = torch.tensor(batch[:, 1:]).to(device)
 
         # output is the wrong size by default so we have to permute the dims
         out = model(dat)
