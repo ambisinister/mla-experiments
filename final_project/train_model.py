@@ -25,7 +25,7 @@ def plot_loss_curve(x, y):
     plt.title("LLM Training Loss w/ MLA + add back saved parameters")
     plt.xlabel("tokens")
     plt.ylabel("cross entropy loss")
-    plt.savefig("./training_curve.png")
+    plt.savefig("./figures/training_curve.png")
 
 def train():
     # using nvidia rtx 3090, all left the same as originally
@@ -37,7 +37,7 @@ def train():
 
     model = model.to(device)
 
-    batch_size = 8 #128 # fairly large batch size since we have the memory
+    batch_size = 128 # fairly large batch size since we have the memory
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -47,7 +47,7 @@ def train():
     loss_fn = torch.nn.CrossEntropyLoss()
 
     # loading the data
-    with open('packed_data.npy', 'rb') as f:
+    with open('./data/packed_data.npy', 'rb') as f:
         data = np.load(f)
 
     #logging
@@ -88,7 +88,7 @@ def train():
             plot_loss_curve(train_losses_x, train_losses_y)
 
     # save model weights
-    torch.save(model.state_dict(), "./model_weights.pt")
+    torch.save(model.state_dict(), "./weights/model_weights.pt")
 
 if __name__ == "__main__":
     train()

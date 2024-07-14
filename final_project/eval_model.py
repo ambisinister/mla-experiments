@@ -2,8 +2,8 @@ import torch
 import numpy as np
 from gpt import GPTModel
 
-def load_model(model_path, device):
-    model = GPTModel(d_model=512, n_heads=16, layers=9, vocab_size=10000, max_seq_len=256)
+def load_model(model_path, device, use_mla=False):
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256, use_mla=use_mla)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -14,12 +14,13 @@ def calculate_perplexity(model, data, batch_size, device):
     total_tokens = 0
     
     with torch.no_grad():
-        for i in range(0, len(data) - batch_size, batch_size):
+        for i in range(0, len(data) - batch_size, batch_size):            
+            print(f"{i} / {len(data)}")
             batch = data[i:i + batch_size]
             inputs = torch.tensor(batch[:, :-1]).to(device)
             targets = torch.tensor(batch[:, 1:]).to(device)
             
-            outputs = model(inputs)
+            outputs, _ = model(inputs)
             loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)),
                                                      targets.view(-1), reduction='sum')
             
@@ -32,12 +33,14 @@ def calculate_perplexity(model, data, batch_size, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = "./model_weights.pt"
-    data_path = "packed_data.npy"
+    #model_path = "./weights/reference_model.pt"
+    model_path = "./weights/35m_model.pt"
+    use_mla = True
+    data_path = "./data/packed_data.npy"
     batch_size = 128
 
     # Load the model
-    model = load_model(model_path, device)
+    model = load_model(model_path, device, use_mla=use_mla)
 
     # Load the data
     with open(data_path, 'rb') as f:

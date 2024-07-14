@@ -32,7 +32,8 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
     
     with torch.no_grad():
         for _ in range(num_tokens_to_generate):
-            if kv_cache is None:
+            #if kv_cache is None:
+            if True:
                 # for first iteration, process whole prompt
                 logits, kv_cache = model(input_ids)
                 next_token_logits = logits[:, -1, :]
@@ -51,10 +52,10 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #model_path = "./mha_weights.pt"
-    #use_mla=False
-    model_path = "./mla_weights.pt"
-    use_mla=True
+    model_path = "./weights/reference_model.pt"
+    use_mla=False
+    #model_path = "./weights/35m_model.pt"
+    #use_mla=True
     
     prompt = "There once was a monster."
     num_tokens_to_generate = 20
