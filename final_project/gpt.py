@@ -1,136 +1,227 @@
 import torch
-from linear import CustomLinear
-from embedding import CustomEmbedding
-from mha import CustomMHA
+import math
+
+class CustomLinear(torch.nn.Module):
+    
+    def __init__(self, input_size, output_size):
+        super().__init__()
+        self.weight = torch.nn.Parameter(0.01*torch.randn((output_size, input_size)))
+        self.bias = torch.nn.Parameter(torch.zeros((output_size,)))
+
+    def forward(self, x):
+        return x @ self.weight.T + self.bias
+
+
+class CustomEmbedding(torch.nn.Module):
+
+    def __init__(self, num_embeddings, embedding_dim):
+        super().__init__()
+        self.weight = torch.nn.Parameter(0.01*torch.randn((num_embeddings, embedding_dim)))
+
+    def forward(self, x):
+        return self.weight[x]
+
+
+class CustomMHA(torch.nn.Module):
+
+    def __init__(self, d_model, n_heads):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.qkv = torch.nn.Parameter(0.01*torch.randn((3*d_model, d_model)))
+        self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
+
+    def forward(self, x):
+        added_batch = False
+        if len(x.shape) == 2:
+            added_batch = True
+            x = x[None,:,:]
+
+        # queries, keys, and values
+        B, S, D = x.shape
+        QKV = x @ self.qkv.T # B, S, 3D
+        Q, K, V = torch.chunk(QKV, 3, -1)
+
+        # split into multiple heads
+        dh = D//self.n_heads
+        q_heads = torch.reshape(Q, (B, S, self.n_heads, dh))
+        k_heads = torch.reshape(K, (B, S, self.n_heads, dh))
+        v_heads = torch.reshape(V, (B, S, self.n_heads, dh))
+
+        # reshape into (B*h, S, dh) so we isolate sequences for each head
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+
+        # make attention mask
+        mask = torch.ones((S,S))
+        mask = torch.tril(mask)
+        mask = mask[None, :, :]
+        mask = mask.to(x.device)
+
+        # attention
+        k_heads_t = torch.transpose(k_heads, 1, 2)
+        qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
+        qkt = qkt*mask
+        qkt[qkt==0] = float('-inf')
+        attn = torch.nn.functional.softmax(qkt, dim=-1)
+        x = torch.matmul(attn, v_heads)
+
+        # shmush back into the correct shape
+        x = torch.reshape(x, (B, self.n_heads, S, dh))
+        x = torch.transpose(x, 1, 2) # B, S, h, dh
+        x = torch.reshape(x, (B, S, D))
+
+        # apply projection
+        x = x @ self.wo.T
+
+        if added_batch:
+            x = x[0]
+
+        return x
 
 '''
-Complete this module which handles a single "block" of our model
-as described in our lecture. You should have two sections with
-residual connections around them:
-
-1) norm1, mha
-2) norm2, a two-layer MLP, dropout
-
-It is perfectly fine to use pytorch implementations of layer norm and dropout,
-as well as activation functions (torch.nn.LayerNorm, torch.nn.Dropout, torch.nn.ReLU).
-
-For layer norm, you just need to pass in D-model: self.norm1 = torch.nn.LayerNorm((d_model,))
-
+fun reference https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
 '''
+        
+class RopelessMLA(torch.nn.Module):
+
+    def __init__(self, d_model, n_heads):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.q_proj_dim = d_model // 4
+        self.kv_proj_dim = d_model // 4
+        self.dh = d_model // n_heads
+
+        # Q projections
+        self.W_dq = torch.nn.Parameter(0.01*torch.randn((d_model, self.q_proj_dim)))
+        self.W_uq = torch.nn.Parameter(0.01*torch.randn((self.q_proj_dim, d_model)))
+        self.q_layernorm = torch.nn.LayerNorm(self.q_proj_dim)
+
+        # KV projections
+        self.W_dkv = torch.nn.Parameter(0.01*torch.randn((d_model, self.kv_proj_dim)))
+        self.W_ukv = torch.nn.Parameter(0.01*torch.randn((self.kv_proj_dim, 2*self.d_model)))
+        self.kv_layernorm = torch.nn.LayerNorm(self.kv_proj_dim)
+
+        # output projection
+        self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
+
+    def forward(self, x):
+        added_batch = False
+        if len(x.shape) == 2:
+            added_batch = True
+            x = x[None,:,:]
+
+        # queries, keys, and values
+        B, S, D = x.shape
+
+        # Q Projections
+        compressed_q = x @ self.W_dq
+        compressed_q = self.q_layernorm(compressed_q)
+        Q = compressed_q @ self.W_uq
+        
+        # KV Projections
+        compressed_kv = x @ self.W_dkv
+        compressed_kv = self.kv_layernorm(compressed_kv)
+        KV = compressed_kv @ self.W_ukv
+        K, V = torch.split(KV, self.d_model, dim=-1)
+
+        # split into multiple heads
+        q_heads = torch.reshape(Q, (B, S, self.n_heads, self.dh))
+        k_heads = torch.reshape(K, (B, S, self.n_heads, self.dh))
+        v_heads = torch.reshape(V, (B, S, self.n_heads, self.dh))
+
+        # reshape into (B*h, S, self.dh) so we isolate sequences for each head
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+
+        # compute QK^T / sqrt(d)
+        k_heads_t = torch.transpose(k_heads, 1, 2)
+        qkt = torch.matmul(q_heads, k_heads_t)
+        qkt = qkt / math.sqrt(float(self.dh))
+
+        # Causal Mask
+        idx = torch.triu_indices(S, S, offset=1)
+        qkt[:, idx[0], idx[1]] = float('-inf')
+
+        # the rest of the attention equation
+        attn = torch.nn.functional.softmax(qkt, dim=-1)
+        x = torch.matmul(attn, v_heads)
+
+        # shmush back into the correct shape
+        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
+        x = torch.transpose(x, 1, 2) # B, S, h, self.dh
+        x = torch.reshape(x, (B, S, D))
+
+        # apply projection
+        x = x @ self.W_o.T
+
+        if added_batch:
+            x = x[0]
+
+        return x
+
+
+
 class TransformerDecoderBlock(torch.nn.Module):
 
     def __init__(self, d_model, n_heads):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
+        self.mha = RopelessMLA(d_model, n_heads) #CustomMHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
-        self.mha = CustomMHA(d_model, n_heads)
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(d_model, 4*d_model),
-            torch.nn.ReLU(),
-            torch.nn.Linear(4*d_model, d_model),
-            torch.nn.Dropout() # Dropout lives in here
-        )
-                
+        self.fc1 = CustomLinear(d_model, 4*d_model)
+        self.act = torch.nn.ReLU()
+        self.fc2 = CustomLinear(4*d_model, d_model)
+        self.dropout = torch.nn.Dropout(0.1)
 
-    '''
-    param x : (tensor) a tensor of size (batch_size, sequence_length, d_model)
-    returns the computed output of the block with the same size.
-    '''
     def forward(self, x):
-        # Section 1, norm + mha
-        post_l1 = self.norm1(x)
-        post_attn = self.mha(post_l1)
-        res1 = post_attn + x
+        x = x + self.mha(self.norm1(x))
+        x = x + self.dropout(self.fc2(self.act(self.fc1(self.norm2(x)))))
+        return x
+        
 
-        # Section 2, norm, mlp, dropout (in self.mlp)
-        post_l2 = self.norm2(res1)
-        post_mlp = self.mlp(post_l2)
-        out = post_mlp + x
-               
-        return out
-                
-
-
-'''
-Create a full GPT model which has two embeddings (token and position),
-and then has a series of transformer block instances (layers). Finally, the last 
-layer should project outputs to size [vocab_size].
-'''
 class GPTModel(torch.nn.Module):
 
-    '''
-    param d_model : (int) the size of embedding vectors and throughout the model
-    param n_heads : (int) the number of attention heads, evenly divides d_model
-    param layers : (int) the number of transformer decoder blocks
-    param vocab_size : (int) the final output vector size
-    param max_seq_len : (int) the longest sequence the model can process.
-        This is used to create the position embedding- i.e. the highest possible
-        position to embed is max_seq_len
-    '''
     def __init__(self, d_model, n_heads, layers, vocab_size, max_seq_len):
         super().__init__()
-        # Embedding layers
-        self.tok_embedding = CustomEmbedding(vocab_size, d_model)
-        self.pos_embedding = CustomEmbedding(max_seq_len, d_model)
 
-        # Transformer blocks
-        self.blocks = torch.nn.Sequential(
-                *[TransformerDecoderBlock(d_model, n_heads) for _ in range(layers)]
-        )
+        self.word_embeddings = CustomEmbedding(vocab_size, d_model)
+        self.position_embeddings = CustomEmbedding(max_seq_len, d_model)
 
-        # Next token prediction
-        self.output_layer = torch.nn.Linear(d_model, vocab_size)
+        self.layers = torch.nn.ModuleList()
+        for i in range(layers):
+            block = TransformerDecoderBlock(d_model, n_heads)
+            self.layers.append(block)
 
-                
+        self.fc_out = CustomLinear(d_model, vocab_size)
 
-    '''
-    param x : (long tensor) an input of size (batch_size, sequence_length) which is
-        filled with token ids
-
-    returns a tensor of size (batch_size, sequence_length, vocab_size), the raw logits for the output
-    '''
     def forward(self, x):
-        # make word embeddings
-        # shape (batch, seq_len, d_model)
-        tok = self.tok_embedding(x)
+        B, S = x.shape
+        positions = torch.arange(S).to(torch.long).to(x.device)
+        positions = positions[None, :]
+        positions = positions.repeat(B, 1)
 
-        # make position embeddings
-        B,S,D = tok.size()
-        input_positions = torch.arange(S)
-        
-        # shape (1, seq_len, d_model)
-        pos = self.pos_embedding(input_positions).unsqueeze(0)
+        w_emb = self.word_embeddings(x)
+        p_emb = self.position_embeddings(positions)
+        x = w_emb + p_emb
 
-        # make position-encoded word embeddings
-        # These can be added from broadcasting, it will be the same as expanding it
-        seq_in = tok + pos
+        for layer in self.layers:
+            x = layer(x)
 
-        ## making sure the above is true, uncomment if needed later
-        # pos2 = self.pos_embedding(input_positions).unsqueeze(0).expand(B,S,D)
-        # seq2 = tok + pos2
-        # print(torch.all(seq_in == seq2))
-        # assert torch.all(seq_in == seq2)
+        logits = self.fc_out(x)
 
-        # pass through transformer blocks
-        post_blocks = self.blocks(seq_in)
-        
-        # asks for logits, so no softmax
-        return self.output_layer(post_blocks) 
+        return logits
 
 
 
 
 if __name__ == "__main__":
 
-    # example of building the model and doing a forward pass
-    D = 128
-    H = 8
-    L = 4
-    model = GPTModel(D, H, L, 1000, 512)
+    model = GPTModel(128, 8, 4, 1000, 512)
     B = 32
-    S = 48 # this can be less than 512
+    S = 48
     x = torch.randint(1000, (B, S))
-    y = model(x) # this should give us logits over the vocab for all positions
-
-    # should be size (B, S, 1000)
-    print(y.size())
+    y = model(x)
