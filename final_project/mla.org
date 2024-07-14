@@ -36,7 +36,7 @@ low-rank factorization can capture more linearities
 
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full attention vector.
 
-It's not immediately clear which of these practices contribute to MLA's viability. For example, it's possible the low-rank factorization adds a lot, and the RoPE extension salvages some of the lost capability from the effectiveness of RoPE.  It's also possible that a dedicated part of the vector whose purpose is to carry RoPE information is the more beneficial component, and the low-rank steps are a marginal benefit. Likewise, it's also possible both of these by themselves are insufficient to see substantial gains, but together they synergize to perform well.
+It's not immediately clear which of these practices contribute to MLA's viability. For example, it's possible the low-rank factorization adds a lot, and the RoPE extension salvages some of the lost capability from the effectiveness of RoPE.  It's also possible that a dedicated part of the vector whose purpose is to carry RoPE information is the more beneficial component, and the low-rank steps are a marginal benefit. Likewise, it's also possible both of these by themselves are insufficient to see substantial gains, but together they synergize to perform well. Finally, it's possible that MLA is not inherently superior to MHA at all, but the ability to reduce the burden upon the KV cache makes it worthwhile to use anyways.
 
 To investigate this, we implement a variant of Multi-head Latent Attention which does not include RoPE. We instead use standard position encodings, and compare this to vanilla Multi-Head Attention using standard position encoding. This way, we can decouple the pros and cons of the RoPE components of MLA, as an ablation study. 
 
@@ -46,10 +46,6 @@ Because the low-rank decomposition reduces the total number of parameters in the
 
 First, we train two models exactly equivalent except replacing MHA with MLA in one of the networks. This knocks our 35M parameter model to 31M parameters. We train both models for 1 epoch on about 100M tokens.
 
-[[./reference_training_curve.png]]
-
-[[./training_curve_31M.png]]
-
 The MHA model reaches a slightly lower loss, but the models are fairly comparable. 
 
 KV cache usage, and performance of both models as a comparison.
@@ -57,10 +53,6 @@ KV cache usage, and performance of both models as a comparison.
 *** Experiment 2
 
 In our second experiment, we add an additional layer to the MLA model, which brings it back up to 34.6M parameters. It's still a bit smaller than the 35M model, but it's close enough to serve as a point of comparison for equal parameter counts with and without MLA.
-
-[[./reference_training_curve.png]]
-
-[[./training_curve_34M.png]]
 
 This performs a little better than the model from experiment 1, and comes just shy of the original MHA network with 35M parameters..
 
@@ -83,10 +75,18 @@ There are three primary advantages to using MLA over normal multi-head attention
 | MHA 35M           |                  99 |           999 |
 | MLA 31M           |                  99 |             0 |
 | MLA 34.6M         |                  99 |             0 |
+| MQA Baseline      |                  ?? |            ?? |
 
-Experiment 1 focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it. 
+Experiment 1 focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
 Experiment 2 focuses on the third of these -- We use an explicitly "larger" model with roughly the same number of parameters. In this case, we spend our advantage from saved parameters on more layers. 
+
+[[./reference_training_curve.png]]
+
+[[./training_curve_31M.png]]
+
+[[./training_curve_34M.png]]
+
 
 ** Discussion
 

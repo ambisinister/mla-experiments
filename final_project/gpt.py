@@ -31,7 +31,7 @@ class CustomMHA(torch.nn.Module):
         self.qkv = torch.nn.Parameter(0.01*torch.randn((3*d_model, d_model)))
         self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-    def forward(self, x):
+    def forward(self, x, kv_cache=None):
         added_batch = False
         if len(x.shape) == 2:
             added_batch = True
@@ -53,8 +53,17 @@ class CustomMHA(torch.nn.Module):
         k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, dh))
         v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, dh))
 
+        if kv_cache is not None:
+            k_cache, v_cache = kv_cache
+            k_heads = torch.cat([k_cache, k_heads], dim=1)
+            v_heads = torch.cat([v_cache, v_heads], dim=1)
+
+        updated_kv_cache = (k_heads, v_heads)
+
+        S_full = k_heads.size(1)
+
         # make attention mask
-        mask = torch.ones((S,S))
+        mask = torch.ones((S,S_full))
         mask = torch.tril(mask)
         mask = mask[None, :, :]
         mask = mask.to(x.device)
@@ -78,7 +87,7 @@ class CustomMHA(torch.nn.Module):
         if added_batch:
             x = x[0]
 
-        return x
+        return x, updated_kv_cache
 
 '''
 fun reference https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
@@ -107,7 +116,7 @@ class RopelessMLA(torch.nn.Module):
         # output projection
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-    def forward(self, x):
+    def forward(self, x, kv_cache=None):
         added_batch = False
         if len(x.shape) == 2:
             added_batch = True
@@ -122,18 +131,26 @@ class RopelessMLA(torch.nn.Module):
         Q = compressed_q @ self.W_uq
         
         # KV Projections
-        compressed_kv = x @ self.W_dkv
-        compressed_kv = self.kv_layernorm(compressed_kv)
+        if kv_cache is None:
+            compressed_kv = x @ self.W_dkv
+            compressed_kv = self.kv_layernorm(compressed_kv)
+        else:
+            next_compressed_kv = x @ self.W_dkv
+            next_compressed_kv = self.kv_layernorm(next_compressed_kv)
+            compressed_kv = torch.cat([kv_cache, next_compressed_kv], dim=1)
+            
         KV = compressed_kv @ self.W_ukv
         K, V = torch.split(KV, self.d_model, dim=-1)
 
+        S = K.size(1)
+
         # split into multiple heads
-        q_heads = torch.reshape(Q, (B, S, self.n_heads, self.dh))
+        q_heads = torch.reshape(Q, (B, Q.size(1), self.n_heads, self.dh))
         k_heads = torch.reshape(K, (B, S, self.n_heads, self.dh))
         v_heads = torch.reshape(V, (B, S, self.n_heads, self.dh))
 
         # reshape into (B*h, S, self.dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, Q.size(1), self.dh))
         k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
         v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
 
@@ -143,17 +160,17 @@ class RopelessMLA(torch.nn.Module):
         qkt = qkt / math.sqrt(float(self.dh))
 
         # Causal Mask
-        idx = torch.triu_indices(S, S, offset=1)
-        qkt[:, idx[0], idx[1]] = float('-inf')
+        mask = torch.triu(torch.ones(Q.size(1), S, device=x.device), diagonal=1).bool()
+        qkt = qkt.masked_fill(mask, float('-inf'))
 
         # the rest of the attention equation
         attn = torch.nn.functional.softmax(qkt, dim=-1)
         x = torch.matmul(attn, v_heads)
 
         # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
+        x = torch.reshape(x, (B, self.n_heads, Q.size(1), self.dh))
         x = torch.transpose(x, 1, 2) # B, S, h, self.dh
-        x = torch.reshape(x, (B, S, D))
+        x = torch.reshape(x, (B, Q.size(1), D))
 
         # apply projection
         x = x @ self.W_o.T
@@ -161,7 +178,7 @@ class RopelessMLA(torch.nn.Module):
         if added_batch:
             x = x[0]
 
-        return x
+        return x, compressed_kv
 
 
 
@@ -181,15 +198,20 @@ class TransformerDecoderBlock(torch.nn.Module):
         self.fc2 = CustomLinear(4*d_model, d_model)
         self.dropout = torch.nn.Dropout(0.1)
 
-    def forward(self, x):
-        x = x + self.mha(self.norm1(x))
+    def forward(self, x, kv_cache=None):
+        normed = self.norm1(x)
+        if kv_cache is not None:
+            mh_x, kv = self.mha(normed, kv_cache=kv_cache)
+        else:
+            mh_x, kv = self.mha(normed)
+        x = x + mh_x
         x = x + self.dropout(self.fc2(self.act(self.fc1(self.norm2(x)))))
-        return x
+        return x, kv
         
 
 class GPTModel(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads, layers, vocab_size, max_seq_len):
+    def __init__(self, d_model, n_heads, layers, vocab_size, max_seq_len, use_mla=False):
         super().__init__()
 
         self.word_embeddings = CustomEmbedding(vocab_size, d_model)
@@ -197,29 +219,33 @@ class GPTModel(torch.nn.Module):
 
         self.layers = torch.nn.ModuleList()
         for i in range(layers):
-            block = TransformerDecoderBlock(d_model, n_heads)
+            block = TransformerDecoderBlock(d_model, n_heads, use_mla=use_mla)
             self.layers.append(block)
 
         self.fc_out = CustomLinear(d_model, vocab_size)
 
-    def forward(self, x):
+    def forward(self, x, kv_cache=None):
         B, S = x.shape
         positions = torch.arange(S).to(torch.long).to(x.device)
         positions = positions[None, :]
         positions = positions.repeat(B, 1)
-
+        
         w_emb = self.word_embeddings(x)
         p_emb = self.position_embeddings(positions)
         x = w_emb + p_emb
 
-        for layer in self.layers:
-            x = layer(x)
+        updated_kv_cache = []
+        for i, layer in enumerate(self.layers):
+            if kv_cache is not None:
+                layer_cache = kv_cache[i]
+            else:
+                layer_cache = None
+            x, new_kv = layer(x, kv_cache=layer_cache)
+            updated_kv_cache.append(new_kv)
 
         logits = self.fc_out(x)
 
-        return logits
-
-
+        return logits, updated_kv_cache
 
 
 if __name__ == "__main__":

@@ -31,13 +31,13 @@ def train():
     # using nvidia rtx 3090, all left the same as originally
     # 35M parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256, use_mla=True)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 
     model = model.to(device)
 
-    batch_size = 128 # fairly large batch size since we have the memory
+    batch_size = 8 #128 # fairly large batch size since we have the memory
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -56,7 +56,8 @@ def train():
     train_losses_x = []
 
     # epochs = 1
-    for i in range(0, len(data) - batch_size, batch_size):
+    for i in range(0, 21): #len(data) - batch_size, batch_size):
+        print(i)
         opt.zero_grad()
         # batch the data
         batch = data[i:i + batch_size]
@@ -66,7 +67,7 @@ def train():
         targ = torch.tensor(batch[:, 1:]).to(device)
 
         # output is the wrong size by default so we have to permute the dims
-        out = model(dat)
+        out, _ = model(dat)
         out = out.permute(0, 2, 1)
         loss = loss_fn(out, targ)
         loss.backward()
