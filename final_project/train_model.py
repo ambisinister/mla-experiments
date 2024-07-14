@@ -30,7 +30,7 @@ def plot_loss_curve(x, y):
 def train():
     # using nvidia rtx 3090, all left the same as originally
     # 35M parameters
-    device = torch.device("cuda")    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GPTModel(d_model=512, n_heads=16, layers=9, vocab_size=10000, max_seq_len=256)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
