@@ -167,10 +167,14 @@ class RopelessMLA(torch.nn.Module):
 
 class TransformerDecoderBlock(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads):
+    def __init__(self, d_model, n_heads, use_mla=True):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
-        self.mha = RopelessMLA(d_model, n_heads) #CustomMHA(d_model, n_heads)
+        if use_mla:
+            print("using Multi-head Latent Attention")
+            self.mha = RopelessMLA(d_model, n_heads)
+        else:
+            self.mha = CustomMHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
         self.fc1 = CustomLinear(d_model, 4*d_model)
         self.act = torch.nn.ReLU()

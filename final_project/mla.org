@@ -40,11 +40,50 @@ It's not immediately clear which of these practices contribute to MLA's viabilit
 
 To investigate this, we implement a variant of Multi-head Latent Attention which does not include RoPE. We instead use standard position encodings, and compare this to vanilla Multi-Head Attention using standard position encoding. This way, we can decouple the pros and cons of the RoPE components of MLA, as an ablation study. 
 
-We train two models of the same size, all exactly equivalent except replacing MHA with MLA in one of the networks. We report parameter sizes, KV cache usage, and performance of both models as a comparison.
+*** Experiment 1
 
-Add RoPE stuff if you have time
+Because the low-rank decomposition reduces the total number of parameters in the network, we do two experiments to compare MLA's relative efficacy compared to vanilla multi-headed attention. 
+
+First, we train two models exactly equivalent except replacing MHA with MLA in one of the networks. This knocks our 35M parameter model to 31M parameters. We train both models for 1 epoch on about 100M tokens.
+
+[[./reference_training_curve.png]]
+
+[[./training_curve_31M.png]]
+
+The MHA model reaches a slightly lower loss, but the models are fairly comparable. 
+
+KV cache usage, and performance of both models as a comparison.
+
+*** Experiment 2
+
+In our second experiment, we add an additional layer to the MLA model, which brings it back up to 34.6M parameters. It's still a bit smaller than the 35M model, but it's close enough to serve as a point of comparison for equal parameter counts with and without MLA.
+
+[[./reference_training_curve.png]]
+
+[[./training_curve_34M.png]]
+
+This performs a little better than the model from experiment 1, and comes just shy of the original MHA network with 35M parameters..
+
+*** Other Experiments
+
+ Add RoPE stuff if you have time
+
+Need to do kv cache stuff, need to get perplexity on training data for each of these models
 
 ** Results
 
+There are three primary advantages to using MLA over normal multi-head attention. 
+
+1. Reduced parameter count
+2. Reduced KV Cache
+3. Greater expressivity w/ same parameter count
+
+Experiment 1 focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it. 
+
+Experiment 2 focuses on the third of these -- We use an explicitly "larger" model with roughly the same number of parameters. In this case, we spend our advantage from saved parameters on more layers. 
+
 ** Discussion
 
+In both cases, the network performed admirably. Likewise, in both cases, we substantially address the KV cache problem of scaling the model to very large sizes -- that the KV cache burden can be reduced substantially with minimal loss in performance is significant.
+
+However, it does seem to have lower throughput compared to normal attention -- both the additional layer and the addition of two matrices to replace one in every attention block adds some relatively significant cost to inference time. 
