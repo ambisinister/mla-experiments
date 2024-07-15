@@ -95,7 +95,7 @@ fun reference https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc1
 The open source implementation of this actually just uses regular KV caching which is extremely annoying: https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct/blob/main/modeling_deepseek.py
 '''
         
-class RopelessMLA(torch.nn.Module):
+class RopelessMLA_Uncompressed(torch.nn.Module):
 
     def __init__(self, d_model, n_heads):
         super().__init__()
@@ -186,6 +186,94 @@ class RopelessMLA(torch.nn.Module):
 
         return x, (k_heads, v_heads)
 
+class RopelessMLA(torch.nn.Module):
+    def __init__(self, d_model, n_heads):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.q_proj_dim = d_model // 4
+        self.kv_proj_dim = d_model // 4
+        self.dh = d_model // n_heads
+        
+        # Q projections
+        self.W_dq = torch.nn.Parameter(0.01*torch.randn((d_model, self.q_proj_dim)))
+        self.W_uq = torch.nn.Parameter(0.01*torch.randn((self.q_proj_dim, d_model)))
+        self.q_layernorm = torch.nn.LayerNorm(self.q_proj_dim)
+        
+        # KV projections
+        self.W_dkv = torch.nn.Parameter(0.01*torch.randn((d_model, self.kv_proj_dim)))
+        self.W_ukv = torch.nn.Parameter(0.01*torch.randn((self.kv_proj_dim, 2*self.d_model)))
+        self.kv_layernorm = torch.nn.LayerNorm(self.kv_proj_dim)
+        
+        # output projection
+        self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
+        self.softmax_scale = torch.tensor(self.dh).rsqrt()
+
+    def forward(self, x, kv_cache=None, past_length=0):
+        added_batch = False
+        if len(x.shape) == 2:
+            added_batch = True
+            x = x[None,:,:]
+            
+        B, S, D = x.size()
+
+        # Q Projections
+        compressed_q = x @ self.W_dq
+        compressed_q = self.q_layernorm(compressed_q)
+        Q = compressed_q @ self.W_uq
+
+        # KV Projections
+        if kv_cache is None:
+            compressed_kv = x @ self.W_dkv
+            compressed_kv = self.kv_layernorm(compressed_kv)
+        else:
+            compressed_kv = kv_cache
+
+        KV = compressed_kv @ self.W_ukv
+        K, V = torch.split(KV, self.d_model, dim=-1)
+
+        # split into multiple heads
+        q_heads = torch.reshape(Q, (B, -1, self.n_heads, self.dh))
+        k_heads = torch.reshape(K, (B, -1, self.n_heads, self.dh))
+        v_heads = torch.reshape(V, (B, -1, self.n_heads, self.dh))
+
+        # reshape into (B*h, S, self.dh) so we isolate sequences for each head
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+
+        S_full = k_heads.size(1)
+
+        # compute QK^T / sqrt(d)
+        k_heads_t = torch.transpose(k_heads, 1, 2)
+        qkt = torch.matmul(q_heads, k_heads_t)
+        qkt = qkt / math.sqrt(float(self.dh))
+
+        # Causal Mask
+        mask = torch.ones((S, S_full))
+        mask = torch.tril(mask, diagonal=past_length)
+        mask = mask[None, :, :]
+        mask = mask.to(x.device)
+        qkt = qkt*mask
+        qkt[qkt==0] = float('-inf')
+
+        # the rest of the attention equation
+        attn = torch.nn.functional.softmax(qkt, dim=-1)
+        x = torch.matmul(attn, v_heads)
+
+        # shmush back into the correct shape
+        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
+        x = torch.transpose(x, 1, 2) # B, S, h, self.dh
+        x = torch.reshape(x, (B, S, D))
+
+        # apply projection
+        x = x @ self.W_o.T
+
+        if added_batch:
+            x = x[0]
+
+        return x, compressed_kv
+    
 
 
 class TransformerDecoderBlock(torch.nn.Module):
