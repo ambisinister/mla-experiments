@@ -52,7 +52,7 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
             next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token.item())
             input_ids = torch.cat([input_ids, next_token], dim=-1)
-            #print(f"Params per token: {calculate_cache_size(kv_cache)}")
+            print(f"Params per token: {calculate_cache_size(kv_cache)}")
     
     return tokenizer.decode(generated_tokens)
                                     
