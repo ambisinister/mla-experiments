@@ -45,9 +45,9 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
                 past_length += 1
 
             # Debugging: Compare with full forward pass
-            #full_logits, _ = model(input_ids)
-            #diff = torch.abs(full_logits[:, -1, :] - logits[:, -1, :]).max()
-            #print(f"Max difference at step {past_length}: {diff.item()}")
+            full_logits, _ = model(input_ids)
+            diff = torch.abs(full_logits[:, -1, :] - logits[:, -1, :]).max()
+            print(f"Max difference at step {past_length}: {diff.item()}")
                 
             next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token.item())

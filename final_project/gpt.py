@@ -226,7 +226,9 @@ class RopelessMLA(torch.nn.Module):
             compressed_kv = x @ self.W_dkv
             compressed_kv = self.kv_layernorm(compressed_kv)
         else:
-            compressed_kv = kv_cache
+            new_kv = x @ self.W_dkv
+            new_kv = self.kv_layernorm(new_kv)
+            compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
 
         KV = compressed_kv @ self.W_ukv
         K, V = torch.split(KV, self.d_model, dim=-1)
