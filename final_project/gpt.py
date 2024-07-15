@@ -31,7 +31,7 @@ class CustomMHA(torch.nn.Module):
         self.qkv = torch.nn.Parameter(0.01*torch.randn((3*d_model, d_model)))
         self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-    def forward(self, x, kv_cache=None):
+    def forward(self, x, kv_cache=None, past_length=0):
         added_batch = False
         if len(x.shape) == 2:
             added_batch = True
@@ -64,7 +64,7 @@ class CustomMHA(torch.nn.Module):
 
         # make attention mask
         mask = torch.ones((S,S_full))
-        mask = torch.tril(mask)
+        mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, :, :]
         mask = mask.to(x.device)
 
@@ -116,7 +116,7 @@ class RopelessMLA(torch.nn.Module):
         # output projection
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-    def forward(self, x, kv_cache=None):
+    def forward(self, x, kv_cache=None, past_length=0):
         added_batch = False
         if len(x.shape) == 2:
             added_batch = True
@@ -130,29 +130,33 @@ class RopelessMLA(torch.nn.Module):
         compressed_q = self.q_layernorm(compressed_q)
         Q = compressed_q @ self.W_uq
         
-        # KV Projections
+        # KV Cache logic
         if kv_cache is None:
             compressed_kv = x @ self.W_dkv
             compressed_kv = self.kv_layernorm(compressed_kv)
+            KV = compressed_kv @ self.W_ukv
+            K, V = torch.split(KV, self.d_model, dim=-1)
+            
+            S_full = S
         else:
             next_compressed_kv = x @ self.W_dkv
             next_compressed_kv = self.kv_layernorm(next_compressed_kv)
             compressed_kv = torch.cat([kv_cache, next_compressed_kv], dim=1)
-            
+
+            S_full = compressed_kv.size(1)
+
         KV = compressed_kv @ self.W_ukv
         K, V = torch.split(KV, self.d_model, dim=-1)
 
-        S = K.size(1)
-
         # split into multiple heads
-        q_heads = torch.reshape(Q, (B, Q.size(1), self.n_heads, self.dh))
-        k_heads = torch.reshape(K, (B, S, self.n_heads, self.dh))
-        v_heads = torch.reshape(V, (B, S, self.n_heads, self.dh))
+        q_heads = torch.reshape(Q, (B, S, self.n_heads, self.dh))
+        k_heads = torch.reshape(K, (B, S_full, self.n_heads, self.dh))
+        v_heads = torch.reshape(V, (B, S_full, self.n_heads, self.dh))
 
         # reshape into (B*h, S, self.dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, Q.size(1), self.dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S_full, self.dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S_full, self.dh))
 
         # compute QK^T / sqrt(d)
         k_heads_t = torch.transpose(k_heads, 1, 2)
@@ -160,17 +164,21 @@ class RopelessMLA(torch.nn.Module):
         qkt = qkt / math.sqrt(float(self.dh))
 
         # Causal Mask
-        mask = torch.triu(torch.ones(Q.size(1), S, device=x.device), diagonal=1).bool()
-        qkt = qkt.masked_fill(mask, float('-inf'))
+        
+        mask = torch.ones((S,S_full))
+        mask = torch.tril(mask, diagonal=past_length)
+        mask = mask[None, :, :]
+        mask = mask.to(x.device)
+        qkt = qkt*mask
 
         # the rest of the attention equation
         attn = torch.nn.functional.softmax(qkt, dim=-1)
         x = torch.matmul(attn, v_heads)
 
         # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, Q.size(1), self.dh))
+        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
         x = torch.transpose(x, 1, 2) # B, S, h, self.dh
-        x = torch.reshape(x, (B, Q.size(1), D))
+        x = torch.reshape(x, (B, S, D))
 
         # apply projection
         x = x @ self.W_o.T
@@ -198,10 +206,10 @@ class TransformerDecoderBlock(torch.nn.Module):
         self.fc2 = CustomLinear(4*d_model, d_model)
         self.dropout = torch.nn.Dropout(0.1)
 
-    def forward(self, x, kv_cache=None):
+    def forward(self, x, kv_cache=None, past_length=0):
         normed = self.norm1(x)
         if kv_cache is not None:
-            mh_x, kv = self.mha(normed, kv_cache=kv_cache)
+            mh_x, kv = self.mha(normed, kv_cache=kv_cache, past_length=past_length)
         else:
             mh_x, kv = self.mha(normed)
         x = x + mh_x
@@ -224,9 +232,11 @@ class GPTModel(torch.nn.Module):
 
         self.fc_out = CustomLinear(d_model, vocab_size)
 
-    def forward(self, x, kv_cache=None):
+        self.max_seq_len = max_seq_len
+
+    def forward(self, x, kv_cache=None, past_length=0):
         B, S = x.shape
-        positions = torch.arange(S).to(torch.long).to(x.device)
+        positions = torch.arange(past_length, past_length + S).to(torch.long).to(x.device)
         positions = positions[None, :]
         positions = positions.repeat(B, 1)
         
@@ -240,7 +250,7 @@ class GPTModel(torch.nn.Module):
                 layer_cache = kv_cache[i]
             else:
                 layer_cache = None
-            x, new_kv = layer(x, kv_cache=layer_cache)
+            x, new_kv = layer(x, kv_cache=layer_cache, past_length=past_length)
             updated_kv_cache.append(new_kv)
 
         logits = self.fc_out(x)

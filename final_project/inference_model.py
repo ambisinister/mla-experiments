@@ -29,32 +29,39 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
     
     generated_tokens = encoded_prompt
     kv_cache = None
+    past_length = 0
     
     with torch.no_grad():
         for _ in range(num_tokens_to_generate):
-            #if kv_cache is None:
-            if True:
+            if kv_cache is None:
                 # for first iteration, process whole prompt
                 logits, kv_cache = model(input_ids)
                 next_token_logits = logits[:, -1, :]
-            else:
+                past_length += input_ids.size()[-1]
+            else:                
                 # afterwards, just do last token
-                logits, kv_cache = model(input_ids[:, -1:], kv_cache)
+                logits, kv_cache = model(input_ids[:, -1:], kv_cache, past_length=past_length)
                 next_token_logits = logits[:, 0, :]
-                print(f"Params per token: {calculate_cache_size(kv_cache)}")
-            
+                past_length += 1
+
+            # Debugging: Compare with full forward pass
+            full_logits, _ = model(input_ids)
+            diff = torch.abs(full_logits[:, -1, :] - logits[:, -1, :]).max()
+            print(f"Max difference at step {past_length}: {diff.item()}")
+                
             next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token.item())
             input_ids = torch.cat([input_ids, next_token], dim=-1)
+            #print(f"Params per token: {calculate_cache_size(kv_cache)}")
     
     return tokenizer.decode(generated_tokens)
                                     
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #model_path = "./weights/reference_model.pt"
+    #model_path = "./weights/mha_weights.pt"
     #use_mla=False
-    model_path = "./weights/31m_model.pt"
+    model_path = "./weights/mla_weights.pt"
     use_mla=True
     
     prompt = "There once was a monster."
