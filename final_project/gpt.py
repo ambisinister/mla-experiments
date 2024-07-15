@@ -207,7 +207,6 @@ class RopelessMLA(torch.nn.Module):
         
         # output projection
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
-        self.softmax_scale = torch.tensor(self.dh).rsqrt()
 
     def forward(self, x, kv_cache=None, past_length=0):
         added_batch = False
