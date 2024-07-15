@@ -129,34 +129,30 @@ class RopelessMLA(torch.nn.Module):
         compressed_q = x @ self.W_dq
         compressed_q = self.q_layernorm(compressed_q)
         Q = compressed_q @ self.W_uq
-        
-        # KV Cache logic
-        if kv_cache is None:
-            compressed_kv = x @ self.W_dkv
-            compressed_kv = self.kv_layernorm(compressed_kv)
-            KV = compressed_kv @ self.W_ukv
-            K, V = torch.split(KV, self.d_model, dim=-1)
-            
-            S_full = S
-        else:
-            next_compressed_kv = x @ self.W_dkv
-            next_compressed_kv = self.kv_layernorm(next_compressed_kv)
-            compressed_kv = torch.cat([kv_cache, next_compressed_kv], dim=1)
 
-            S_full = compressed_kv.size(1)
-
+        # KV Projections
+        compressed_kv = x @ self.W_dkv
+        compressed_kv = self.kv_layernorm(compressed_kv)
         KV = compressed_kv @ self.W_ukv
         K, V = torch.split(KV, self.d_model, dim=-1)
 
         # split into multiple heads
-        q_heads = torch.reshape(Q, (B, S, self.n_heads, self.dh))
-        k_heads = torch.reshape(K, (B, S_full, self.n_heads, self.dh))
-        v_heads = torch.reshape(V, (B, S_full, self.n_heads, self.dh))
+        q_heads = torch.reshape(Q, (B, -1, self.n_heads, self.dh))
+        k_heads = torch.reshape(K, (B, -1, self.n_heads, self.dh))
+        v_heads = torch.reshape(V, (B, -1, self.n_heads, self.dh))
 
         # reshape into (B*h, S, self.dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, self.dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S_full, self.dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S_full, self.dh))
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+
+        # KV Cache logic
+        if kv_cache is not None:
+            k_cache, v_cache = kv_cache
+            k_heads = torch.cat([k_cache, k_heads], dim=1)
+            v_heads = torch.cat([v_cache, v_heads], dim=1)
+
+        S_full = k_heads.size(1)
 
         # compute QK^T / sqrt(d)
         k_heads_t = torch.transpose(k_heads, 1, 2)
@@ -164,12 +160,12 @@ class RopelessMLA(torch.nn.Module):
         qkt = qkt / math.sqrt(float(self.dh))
 
         # Causal Mask
-        
-        mask = torch.ones((S,S_full))
+        mask = torch.ones((S, S_full))
         mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, :, :]
         mask = mask.to(x.device)
         qkt = qkt*mask
+        qkt[qkt==0] = float('-inf')
 
         # the rest of the attention equation
         attn = torch.nn.functional.softmax(qkt, dim=-1)
@@ -186,7 +182,7 @@ class RopelessMLA(torch.nn.Module):
         if added_batch:
             x = x[0]
 
-        return x, compressed_kv
+        return x, (k_heads, v_heads)
 
 
 
