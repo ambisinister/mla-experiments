@@ -87,6 +87,21 @@ Experiment 2 focuses on the third of these -- We use an explicitly "larger" mode
 
 [[./training_curve_34M.png]]
 
+*** Inference Time Experiments
+
+The open source code for deepseek-v2 actually just uses regular kv caching, not caching the compressed vector.
+
+This is because it's slower if you have to do the decompression layer. But it takes more memory, so it's really important if you want to do batched inference and serve to customers.
+
+How much different is it? We will implement two versions of ropeless MLA to see how much different it is.
+
+| Model Description            | Time to Generate 500 Tokens |
+|------------------------------+-----------------------------|
+| MHA 35M (Baseline)           |                             |
+| MLA 31M (Normal KV Cache)    |                             |
+| MLA 31M (Compressed Cache)   |                             |
+| MLA 34.6M (Normal KV Cache)  |                             |
+| MLA 34.6M (Compressed Cache) |                             |
 
 ** Discussion
 
