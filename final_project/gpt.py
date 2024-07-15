@@ -91,6 +91,8 @@ class CustomMHA(torch.nn.Module):
 
 '''
 fun reference https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
+
+The open source implementation of this actually just uses regular KV caching which is extremely annoying: https://huggingface.co/deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct/blob/main/modeling_deepseek.py
 '''
         
 class RopelessMLA(torch.nn.Module):
