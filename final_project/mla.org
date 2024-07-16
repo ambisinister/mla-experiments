@@ -12,21 +12,15 @@ In comparison, MLA accomplishes this by using a low-rank factorized projection m
 
 There's also an element of this which makes this compatible with RoPE, but for simplicity we will start by just exploring what the above part accomplishes differently from normal MHA.
 
-** TODO Why Low-Rank Factorization
+** Why Low-Rank Factorization
 
-Using two matrices instead of one, in theory, has some tradeoffs.
+Using two matrices instead of one, in theory, has some tradeoffs. The practice of factorizing a matrix (in this case the Q and KV matrices) into a product of matrices (in this case the compression and decompression matrices) is called /matrix decomposition/. In the case here, where we are decomposing a matrix (a, b) into two matrices (a, r), (r, b), is called /rank factorization/. You can pretty much always do this, but the smaller the value of /r/ the more likely you will lose substantial data about your original matrix.
 
-Fewer params (1536(5120 + 24576) < 5120 * 24576)) (4.5e7 vs 1.2e8)
+When using low-rank factorization for layers in a neural network, the good things are that the compressed matrices use fewer parameters ((1536(5120 + 24576) < 5120 * 24576)), (4.5e7 vs 1.2e8)), and are somewhat more expressive (by virtue of having two layers sometimes separated by a nonlinearity like a layernorm or activation. They can end up roughly approximate or equivalent to one larger matrix, so in theory you could multiply the weights of these matrices together to "retrieve your original matrix", albeit with some compression loss.
 
-more expressive
+The weaknesses of doing this are that we now have to perform 2 operations for every time we use this (i.e. we double the total matmuls for each layer we compress and decompress, in exchange for making them small), and will obviously lose some of the original representation of the original matrix. You can think of low-rank decomposition as trading memory costs for computation costs -- they are popular for things like finetuning and here for kv-cache reduction, since those things are gated by total memory cost rather than computational overhead or inference speed. 
 
-more matmuls, more memory on activations (?)
-
-two step linear projection?
-
-you can multiply the matrices together and "get your original matrix", but not compressed and with lower expressive power. This will give you back your original MHA, so this part is just compressing the operation and adding additional capacity for nonlinearity in exchange for lowering the rank.
-
-low-rank factorization can capture more linearities
+In our case, we are hoping that we can preserve the functionality of W_qkv as much as possible while reducing the size of the cache by as much as we can. This should, in theory, allow us to enjoy the performance of normal multi-head attention while keeping the kv cache overhead minimal.
 
 ** TODO Related Work
 
