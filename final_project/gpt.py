@@ -279,12 +279,16 @@ class RopelessMLA(torch.nn.Module):
 
 class TransformerDecoderBlock(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads, use_mla=True):
+    def __init__(self, d_model, n_heads, use_mla=True, cache_compress=True):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
         if use_mla:
             print("using Multi-head Latent Attention")
-            self.mha = RopelessMLA(d_model, n_heads)
+            if cache_compress:
+                self.mha = RopelessMLA(d_model, n_heads)
+            else:
+                print("using regular KV Cache")
+                self.mha = RopelessMLA_Uncompressed(d_model, n_heads)
         else:
             self.mha = CustomMHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
@@ -306,7 +310,8 @@ class TransformerDecoderBlock(torch.nn.Module):
 
 class GPTModel(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads, layers, vocab_size, max_seq_len, use_mla=False):
+    def __init__(self, d_model, n_heads, layers, vocab_size,
+                 max_seq_len, use_mla=False, cache_compress=True):
         super().__init__()
 
         self.word_embeddings = CustomEmbedding(vocab_size, d_model)
@@ -314,7 +319,8 @@ class GPTModel(torch.nn.Module):
 
         self.layers = torch.nn.ModuleList()
         for i in range(layers):
-            block = TransformerDecoderBlock(d_model, n_heads, use_mla=use_mla)
+            block = TransformerDecoderBlock(d_model, n_heads, use_mla=use_mla,
+                                            cache_compress=cache_compress)
             self.layers.append(block)
 
         self.fc_out = CustomLinear(d_model, vocab_size)

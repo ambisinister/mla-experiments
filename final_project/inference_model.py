@@ -59,10 +59,10 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    #model_path = "./weights/mha_weights.pt"
-    #use_mla=False
-    model_path = "./weights/mla_weights.pt"
-    use_mla=True
+    model_path = "./weights/reference_model.pt"
+    use_mla=False
+    #model_path = "./weights/31m_model.pt"
+    #use_mla=True
     
     prompt = "There once was a monster."
     num_tokens_to_generate = 20
