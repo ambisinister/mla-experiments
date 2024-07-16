@@ -2,8 +2,9 @@ import torch
 import numpy as np
 from gpt import GPTModel
 
-def load_model(model_path, device, use_mla=False):
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256, use_mla=use_mla)
+def load_model(model_path, device, use_mla=False, use_mqa=False):
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=256, use_mla=use_mla, use_mqa=use_mqa)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -34,13 +35,16 @@ def calculate_perplexity(model, data, batch_size, device):
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #model_path = "./weights/reference_model.pt"
-    model_path = "./weights/35m_model.pt"
-    use_mla = True
+    #model_path = "./weights/35m_model.pt"
+    model_path = "./weights/mqa_model.pt"
+    use_mla = False
+    use_mqa = True
     data_path = "./data/packed_data.npy"
     batch_size = 128
 
     # Load the model
-    model = load_model(model_path, device, use_mla=use_mla)
+    model = load_model(model_path, device,
+                       use_mla=use_mla, use_mqa=use_mqa)
 
     # Load the data
     with open(data_path, 'rb') as f:

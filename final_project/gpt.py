@@ -117,20 +117,20 @@ class RopelessMQA(torch.nn.Module):
             V = torch.cat([v_cache, V], dim=1)
 
         updated_kv_cache = (K, V)        
-
+        
         # split into multiple heads
         dh = D//self.n_heads
         K_expand = K.unsqueeze(2).expand(B, -1, self.n_heads, -1)
         V_expand = V.unsqueeze(2).expand(B, -1, self.n_heads, -1)
 
         q_heads = torch.reshape(Q, (B, S, self.n_heads, dh))
-        k_heads = torch.reshape(K_expand, (B, S, self.n_heads, dh))
-        v_heads = torch.reshape(V_expand, (B, S, self.n_heads, dh))
+        k_heads = torch.reshape(K_expand, (B, -1, self.n_heads, dh))
+        v_heads = torch.reshape(V_expand, (B, -1, self.n_heads, dh))
 
         # reshape into (B*h, S, dh) so we isolate sequences for each head
         q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, dh))
 
         S_full = k_heads.size(1)
 

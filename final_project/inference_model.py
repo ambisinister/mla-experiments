@@ -2,8 +2,9 @@ import torch
 from gpt import GPTModel
 from hftokenizer import HFTokenizer
 
-def load_model(model_path, device, use_mla=False):
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000, max_seq_len=256, use_mla=use_mla)
+def load_model(model_path, device, use_mla=False, use_mqa=False):
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=256, use_mla=use_mla, use_mqa=use_mqa)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -59,16 +60,21 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_path = "./weights/reference_model.pt"
-    use_mla=False
+    #model_path = "./weights/reference_model.pt"
+    #use_mla=False
+    #use_mqa=False
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
+    #use_mqa=True
+    model_path = "./weights/mqa_model.pt"
+    use_mla=False
+    use_mqa=True
     
     prompt = "There once was a monster."
     num_tokens_to_generate = 20
 
     # Load the model
-    model = load_model(model_path, device, use_mla=use_mla)
+    model = load_model(model_path, device, use_mla=use_mla, use_mqa=use_mqa)
 
     # Load the tokenizer
     tokenizer = HFTokenizer()

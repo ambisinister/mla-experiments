@@ -31,6 +31,7 @@ def train():
     # using nvidia rtx 3090, all left the same as originally
     # 35M parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
                      max_seq_len=256, use_mla=False, use_mqa=True)
     param_count = sum(p.numel() for p in model.parameters())
@@ -38,7 +39,7 @@ def train():
 
     model = model.to(device)
 
-    batch_size = 8 # fairly large batch size since we have the memory
+    batch_size = 128 # fairly large batch size since we have the memory
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -57,8 +58,9 @@ def train():
     train_losses_x = []
 
     # epochs = 1
-    for i in range(0, 21): #len(data) - batch_size, batch_size):
-        print(i)
+    j = 0
+    for i in range(0, len(data) - batch_size, batch_size):
+        j += 1
         opt.zero_grad()
         # batch the data
         batch = data[i:i + batch_size]
@@ -82,10 +84,10 @@ def train():
         total_tokens += np.prod([*np.shape(batch)])
 
         # log every 10 batches, or every 327,680 tokens
-        if i % 10 == 9:
+        if j % 10 == 9:
             train_losses_x.append(total_tokens)
             train_losses_y.append(loss.item())
-            print(i, loss.item())
+            print(f"{i}/{len(data)}", loss.item())
             plot_loss_curve(train_losses_x, train_losses_y)
 
     # save model weights
