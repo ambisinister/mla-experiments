@@ -31,13 +31,14 @@ def train():
     # using nvidia rtx 3090, all left the same as originally
     # 35M parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GPTModel(d_model=512, n_heads=16, layers=9, vocab_size=10000, max_seq_len=256, use_mla=True)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=256, use_mla=False, use_mqa=True)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 
     model = model.to(device)
 
-    batch_size = 128 # fairly large batch size since we have the memory
+    batch_size = 8 # fairly large batch size since we have the memory
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset

@@ -89,6 +89,79 @@ class CustomMHA(torch.nn.Module):
 
         return x, updated_kv_cache
 
+class RopelessMQA(torch.nn.Module):
+
+    def __init__(self, d_model, n_heads):
+        super().__init__()
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.wq = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
+        self.wkv = torch.nn.Parameter(0.01*torch.randn((d_model, 2 * (d_model//n_heads))))
+        self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
+
+    def forward(self, x, kv_cache=None, past_length=0):
+        added_batch = False
+        if len(x.shape) == 2:
+            added_batch = True
+            x = x[None,:,:]
+
+        # queries, keys, and values
+        B, S, D = x.shape
+        Q = x @ self.wq.T # B, S, D
+        KV = x @ self.wkv # B, S, 2*Dh
+        K, V = torch.chunk(KV, 2, -1)
+
+        if kv_cache is not None:
+            k_cache, v_cache = kv_cache
+            K = torch.cat([k_cache, K], dim=1)
+            V = torch.cat([v_cache, V], dim=1)
+
+        updated_kv_cache = (K, V)        
+
+        # split into multiple heads
+        dh = D//self.n_heads
+        K_expand = K.unsqueeze(2).expand(B, -1, self.n_heads, -1)
+        V_expand = V.unsqueeze(2).expand(B, -1, self.n_heads, -1)
+
+        q_heads = torch.reshape(Q, (B, S, self.n_heads, dh))
+        k_heads = torch.reshape(K_expand, (B, S, self.n_heads, dh))
+        v_heads = torch.reshape(V_expand, (B, S, self.n_heads, dh))
+
+        # reshape into (B*h, S, dh) so we isolate sequences for each head
+        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+
+        S_full = k_heads.size(1)
+
+        # make attention mask
+        mask = torch.ones((S,S_full))
+        mask = torch.tril(mask, diagonal=past_length)
+        mask = mask[None, :, :]
+        mask = mask.to(x.device)
+
+        # attention
+        k_heads_t = torch.transpose(k_heads, 1, 2)
+        qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
+        qkt = qkt*mask
+        qkt[qkt==0] = float('-inf')
+        attn = torch.nn.functional.softmax(qkt, dim=-1)
+        x = torch.matmul(attn, v_heads)
+
+        # shmush back into the correct shape
+        x = torch.reshape(x, (B, self.n_heads, S, dh))
+        x = torch.transpose(x, 1, 2) # B, S, h, dh
+        x = torch.reshape(x, (B, S, D))
+
+        # apply projection
+        x = x @ self.wo.T
+
+        if added_batch:
+            x = x[0]
+
+        return x, updated_kv_cache    
+
+    
 '''
 fun reference https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
 
@@ -279,7 +352,7 @@ class RopelessMLA(torch.nn.Module):
 
 class TransformerDecoderBlock(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads, use_mla=True, cache_compress=True):
+    def __init__(self, d_model, n_heads, use_mla=True, use_mqa=False, cache_compress=True):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
         if use_mla:
@@ -289,6 +362,9 @@ class TransformerDecoderBlock(torch.nn.Module):
             else:
                 print("using regular KV Cache")
                 self.mha = RopelessMLA_Uncompressed(d_model, n_heads)
+        elif use_mqa:
+            print("using Multi-Query Attention")
+            self.mha = RopelessMQA(d_model, n_heads)
         else:
             self.mha = CustomMHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
@@ -311,7 +387,7 @@ class TransformerDecoderBlock(torch.nn.Module):
 class GPTModel(torch.nn.Module):
 
     def __init__(self, d_model, n_heads, layers, vocab_size,
-                 max_seq_len, use_mla=False, cache_compress=True):
+                 max_seq_len, use_mla=False, use_mqa=False, cache_compress=True):
         super().__init__()
 
         self.word_embeddings = CustomEmbedding(vocab_size, d_model)
@@ -319,7 +395,8 @@ class GPTModel(torch.nn.Module):
 
         self.layers = torch.nn.ModuleList()
         for i in range(layers):
-            block = TransformerDecoderBlock(d_model, n_heads, use_mla=use_mla,
+            block = TransformerDecoderBlock(d_model, n_heads,
+                                            use_mla=use_mla, use_mqa=use_mqa,
                                             cache_compress=cache_compress)
             self.layers.append(block)
 
