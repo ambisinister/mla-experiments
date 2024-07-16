@@ -2,11 +2,7 @@
 
 * On Multi-Head Latent Attention
 
-https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
-
-https://arxiv.org/abs/2405.04434
-
-Multi-head Latent Attention (MLA) is a variant of multi-head attention which was introduced in the DeepSeek-V2 paper. There are several variants of multi-head attention whose purpose is primarily to reduce the KV-cache size, which is a memory bottleneck that emerges from scaling large models. These methods, which include Group-Query Attention and Multi-Query Attention, are primarily considered /performance tradeoffs/, i.e. the performance is worse, but you get to scale them by reducing the memory overhead.
+Multi-head Latent Attention (MLA) is a variant of multi-head attention which was introduced in the DeepSeek-V2 paper. There are several variants of multi-head attention whose purpose is primarily to reduce the KV-cache size, which is a memory bottleneck that emerges from scaling large models. These methods, which include Group-Query Attention and Multi-Query Attention, are primarily considered /performance tradeoffs/, i.e. the performance is worse, but you get to scale them much further by reducing the memory overhead.
 
 In comparison, MLA accomplishes this by using a low-rank factorized projection matrix, operating a bit like multi-query attention where the decompression process yields the unique, appropriate KV for that particular head. DeepSeek claims this not only helps the memory overhead, but also /improves/ the model rather than suffering for its inclusion. The basic idea is as follows:
 
@@ -16,7 +12,7 @@ In comparison, MLA accomplishes this by using a low-rank factorized projection m
 
 There's also an element of this which makes this compatible with RoPE, but for simplicity we will start by just exploring what the above part accomplishes differently from normal MHA.
 
-** Why Low-Rank Factorization
+** TODO Why Low-Rank Factorization
 
 Using two matrices instead of one, in theory, has some tradeoffs.
 
@@ -32,7 +28,15 @@ you can multiply the matrices together and "get your original matrix", but not c
 
 low-rank factorization can capture more linearities
 
-** Experiments
+** TODO Related Work
+
+https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md
+
+https://arxiv.org/abs/2405.04434
+
+** TODO Experiments
+
+mqa experiments
 
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full attention vector.
 
@@ -40,7 +44,7 @@ It's not immediately clear which of these practices contribute to MLA's viabilit
 
 To investigate this, we implement a variant of Multi-head Latent Attention which does not include RoPE. We instead use standard position encodings, and compare this to vanilla Multi-Head Attention using standard position encoding. This way, we can decouple the pros and cons of the RoPE components of MLA, as an ablation study. 
 
-*** Experiment 1
+*** Experiment 1a
 
 Because the low-rank decomposition reduces the total number of parameters in the network, we do two experiments to compare MLA's relative efficacy compared to vanilla multi-headed attention. 
 
@@ -50,25 +54,33 @@ The MHA model reaches a slightly lower loss, but the models are fairly comparabl
 
 KV cache usage, and performance of both models as a comparison.
 
-*** Experiment 2
+*** Experiment 1b
 
 In our second experiment, we add an additional layer to the MLA model, which brings it back up to 34.6M parameters. It's still a bit smaller than the 35M model, but it's close enough to serve as a point of comparison for equal parameter counts with and without MLA.
 
 This performs a little better than the model from experiment 1, and comes just shy of the original MHA network with 35M parameters..
 
+*** Experiment 2a
+
+We also want to test inference speed with the new KV caching method, and how the additional matmuls affect the throughput. For this experiment, we use a fixed prompt of 100 tokens and measure the time to generate between 20 and 100 tokens, to observe how the token count affects the speed of autoregressive output.
+
+*** Experiment 2b
+
+Likewise, we invert the previous experiment and use a variable prompt of between 20 and 100 tokens and measure the time to generate 100 tokens. This is largely identical stratified by model (i.e. a single model will always be faster than another model, and the latency values of both models are about the same in both cases no matter how long the input prompt is
+
 *** Other Experiments
 
- Add RoPE stuff if you have time
+ Add RoPE stuff if you have time, add MQA comparison
 
-Need to do kv cache stuff, need to get perplexity on training data for each of these models
+** TODO Results
 
-** Results
+TODO: Multi-query attention baseline
 
 There are three primary advantages to using MLA over normal multi-head attention. 
 
 1. Reduced parameter count
-2. Reduced KV Cache
-3. Greater expressivity w/ same parameter count
+2. Reduced KV Cache size
+3. Greater expressivity w/ same parameter count and more layers
 
 | Model Description | Training Perplexity | KV Cache Parameters per Token |
 |-------------------+---------------------+-------------------------------|
@@ -79,32 +91,46 @@ There are three primary advantages to using MLA over normal multi-head attention
 
 Experiment 1 focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
-Experiment 2 focuses on the third of these -- We use an explicitly "larger" model with roughly the same number of parameters. In this case, we spend our advantage from saved parameters on more layers. 
+Experiment 2 focuses on the third of these -- We use an explicitly "larger" model with roughly the same number of parameters. In this case, we spend our advantage from saved parameters on more layers. We still get lower performance here compared to full MHA, but it is a bit better than the model from experiment 1.
 
-[[./reference_training_curve.png]]
+[[./figures/reference_training_curve.png]]
 
-[[./training_curve_31M.png]]
+[[./figures/training_curve_31M.png]]
 
-[[./training_curve_34M.png]]
+[[./figures/training_curve_34M.png]]
 
 *** Inference Time Experiments
 
-The open source code for deepseek-v2 actually just uses regular kv caching, not caching the compressed vector.
+Contrary to what they describe in the DeepSeek-V2 paper, the modeling code for the open-sourced DeepSeek-V2 weights just uses regular full KV caching, rather than compressing KV and caching that. 
 
-This is because it's slower if you have to do the decompression layer. But it takes more memory, so it's really important if you want to do batched inference and serve to customers.
+This is because it's slower if you have to do the decompression layer to retrieve KV from compressed KV, and if you have extra space, it's faster to just store those values directly.  it takes more memory, so it's really important if you want to do batched inference and serve to customers. It's also important to recognize that these operations are (roughly) equivalent -- the only major difference is that we cache earlier or later along the inference logic flow, not that we are ending up with substantially different values one way or the other.
 
-How much different is it? We will implement two versions of ropeless MLA to see how much different it is.
+You may ask: how different is the performance between compressed caching and full KV caching? We will implement two versions of ropeless MLA to see how much different it is: one using a compressed KV cache and one using the standard full KV cache similar to their open source modeling code. 
 
-| Model Description            | Time to Generate 500 Tokens |
-|------------------------------+-----------------------------|
-| MHA 35M (Baseline)           |                             |
-| MLA 31M (Normal KV Cache)    |                             |
-| MLA 31M (Compressed Cache)   |                             |
-| MLA 34.6M (Normal KV Cache)  |                             |
-| MLA 34.6M (Compressed Cache) |                             |
+[[./figures/inference_100_in.png]]
+
+[[./figures/inference_100_out.png]]
+
+The above plots follow fairly nicely from the architectures they represent. The reference MHA implementation with full KV caching is faster than all the other models, since it performs fewer matmuls (due to not doing compression -> decompression operations). The 31M model is faster than the 34.6M model, and for both models full KV caching is faster than compressed KV caching (due to using fewer matmuls to uncompress K and V).
+
+In all cases, we substantially see improved autoregressive generation time compared to not using a KV cache, and in the compressed KV case we see the memory requirements slashed a very large amount. 
 
 ** Discussion
 
-In both cases, the network performed admirably. Likewise, in both cases, we substantially address the KV cache problem of scaling the model to very large sizes -- that the KV cache burden can be reduced substantially with minimal loss in performance is significant.
+In both cases, the network performed admirably. Likewise, in both cases, we substantially address the KV cache problem of scaling the model to very large sizes -- that the KV cache burden can be reduced substantially with minimal loss in performance is significant. In addition, the memory saved will grow with the size of the network: whereas Multi-Head Attention uses (2 * n_heads * d_heads * layers) KV cache per token, in comparison the ropeless MLA uses (d_compression * layer) or roughly (4 * d_heads * layers). At large model size, this is extremely, extremely large. [madsys-dev](https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md) with a larger model saw a reduction from 81.92 kB cache per token to 1.15 kB per token, a reduction of 98.6% in size. To bring the KV cache from a major architectural bottleneck to a relative non-issue is certainly extremely noteworthy. 
 
-However, it does seem to have lower throughput compared to normal attention -- both the additional layer and the addition of two matrices to replace one in every attention block adds some relatively significant cost to inference time. 
+However, it does seem to have lower throughput compared to normal attention -- both the additional layer and the addition of two matrices to replace one in every attention block adds some relatively significant cost to inference time. You can use full KV caching to speed this up, but then you lose out on the largest benefit of the architecture in the first place (very small KV cache), while still remaining slower than regular MHA. It's important to point this out relative to variants like multi-query attention, which are worse-performing and use larger caches than MLA, but are expressly /faster/ than regular multi-head attention. 
+
+Overall, we do not see the claimed equivalent-or-superior performance claimed in the DeepSeek-v2 paper with this ropeless variant of MLA. This could be for a variety of reasons:
+
+1. The RoPE component of MLA, beyond being a simple hack, is what elevates the performance of MLA to at-or-above MHA
+2. The superior performance of MLA emerges at larger scales, where both the model and the input sequences are much larger.
+3. MHA and MLA could perform more comparably when dealing with actual measured capabilities, compared to training data perplexity -- it could be that MLA's higher perplexity represents a resistance to overfitting beyond being a genuinely useful metric for measuring performance.
+4. MLA being more compatible with modern training paradigms like mixed-precision, etc. 
+
+Future work here could include:
+- Extending RopelessMLA to use RoPE
+- using a much larger model on a bigger dataset to measure capability directly
+- Optimizing the implementation further beyond this toy pedagogical implementation
+
+MLA has demonstrated it's usefulness here in scaling up very large models. However, it remains to be seen if the claimed benefits extend to smaller models.
