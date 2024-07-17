@@ -20,13 +20,14 @@ def calculate_perplexity(model, data, batch_size, device):
             batch = data[i:i + batch_size]
             inputs = torch.tensor(batch[:, :-1]).to(device)
             targets = torch.tensor(batch[:, 1:]).to(device)
-            
-            outputs, _ = model(inputs)
-            loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)),
-                                                     targets.view(-1), reduction='sum')
-            
+
+            with torch.autocast(device_type=device):
+                outputs, _ = model(inputs)
+                loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)),
+                                                         targets.view(-1), reduction='sum')
+                
             total_loss += loss.item()
-            total_tokens += np.prod(targets.size())
+            total_tokens += targets.numel()
     
     avg_loss = total_loss / total_tokens
     perplexity = np.exp(avg_loss)
@@ -36,11 +37,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #model_path = "./weights/reference_model.pt"
     #model_path = "./weights/35m_model.pt"
-    model_path = "./weights/mqa_model.pt"
+    #model_path = "./weights/mqa_model.pt"
+    model_path = "./weights/model_weights.pt"    
     use_mla = False
-    use_mqa = True
+    use_mqa = False
     data_path = "./data/packed_data.npy"
-    batch_size = 128
+    batch_size = 16
 
     # Load the model
     model = load_model(model_path, device,

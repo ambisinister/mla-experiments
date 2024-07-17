@@ -82,4 +82,4 @@ def construct_dataset(data_txt_file, sequence_length=256):
 
 
 if __name__ == "__main__":
-    construct_dataset("./data.txt", 256)
+    construct_dataset("./data.txt", 1024)

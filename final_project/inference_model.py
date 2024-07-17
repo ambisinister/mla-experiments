@@ -2,9 +2,11 @@ import torch
 from gpt import GPTModel
 from hftokenizer import HFTokenizer
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def load_model(model_path, device, use_mla=False, use_mqa=False):
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-                     max_seq_len=256, use_mla=use_mla, use_mqa=use_mqa)
+    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+                     max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -36,17 +38,21 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
         for _ in range(num_tokens_to_generate):
             if kv_cache is None:
                 # for first iteration, process whole prompt
-                logits, kv_cache = model(input_ids)
+                with torch.autocast(device_type=device):
+                    logits, kv_cache = model(input_ids)
                 next_token_logits = logits[:, -1, :]
                 past_length += input_ids.size()[-1]
             else:                
                 # afterwards, just do last token
-                logits, kv_cache = model(input_ids[:, -1:], kv_cache, past_length=past_length)
+                with torch.autocast(device_type=device):
+                    logits, kv_cache = model(input_ids[:, -1:], kv_cache,
+                                             past_length=past_length)
                 next_token_logits = logits[:, 0, :]
                 past_length += 1
 
             # Debugging: Compare with full forward pass
-            full_logits, _ = model(input_ids)
+            with torch.autocast(device_type=device):
+                full_logits, _ = model(input_ids)
             diff = torch.abs(full_logits[:, -1, :] - logits[:, -1, :]).max()
             print(f"Max difference at step {past_length}: {diff.item()}")
                 

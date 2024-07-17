@@ -404,6 +404,7 @@ class GPTModel(torch.nn.Module):
 
         self.max_seq_len = max_seq_len
 
+    @torch.autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu')
     def forward(self, x, kv_cache=None, past_length=0):
         B, S = x.shape
         positions = torch.arange(past_length, past_length + S).to(torch.long).to(x.device)
