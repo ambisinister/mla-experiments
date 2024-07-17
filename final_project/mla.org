@@ -40,7 +40,18 @@ In comparison, Multi-head Latent Attention[fn:3] (MLA) is an attention variant i
 
 MLA is comparatively very understudied. Some work exists for exploring the properties of MLA, but a lot of it is Chinese-language blogs[fn:4]. The hope with this work is a straightforward, pedagogical implementation of MLA to aid in understanding the costs and benefits.
 
-** Experiments
+** TODO Experiments
+
+*** Yet to be done
+
+Train ~300M models on the same experiments
+
+1. gradient accumulation for larger batch size
+2. autocast / grad scaling for mixed precision training
+3. move to dataloaders for faster data loading
+4. train in f16 if possible??
+
+*** Below is experiments section
 
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full attention vector.
 
