@@ -43,7 +43,7 @@ def train():
     scaler = GradScaler()
     acc_steps = 4
 
-    batch_size = 16 # should fit on 3090, might take a while
+    batch_size = 8 # should fit on 3090, might take a while
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -65,15 +65,16 @@ def train():
     j = 0
     for i in range(0, len(data) - batch_size, batch_size):
         j += 1
+        print(j, i)
         # batch the data
         batch = data[i:i + batch_size]
+        
+        # offsets, converting to tensor, and sending to gpu
+        dat = torch.tensor(batch[:, :-1]).to(device)
+        targ = torch.tensor(batch[:, 1:]).to(device)
 
         # https://pytorch.org/docs/stable/amp.html
-        with torch.autocast(device_type=device):
-            # offsets, converting to tensor, and sending to gpu
-            dat = torch.tensor(batch[:, :-1]).to(device)
-            targ = torch.tensor(batch[:, 1:]).to(device)
-            
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):    
             out, _ = model(dat)
             out = out.permute(0, 2, 1)
             loss = loss_fn(out, targ)
@@ -93,8 +94,8 @@ def train():
         # logging total tokens is just S * batch size
         total_tokens += np.prod([*np.shape(batch)])
 
-        # log every 10 batches, or every 327,680 tokens
-        if j % 10 == 9:
+        # log every 10 batches
+        if ((i // batch_size) + 1) % (10 * acc_steps) == 0:
             train_losses_x.append(total_tokens)
             train_losses_y.append(loss.item())
             print(f"{i}/{len(data)}", loss.item())
