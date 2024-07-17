@@ -28,18 +28,19 @@ def plot_loss_curve(x, y):
     plt.savefig("./figures/training_curve.png")
 
 def train():
-    # using nvidia rtx 3090, all left the same as originally
-    # 35M parameters
+    # using nvidia rtx 3090
+    # roughly gpt-2-medium
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-                     max_seq_len=256, use_mla=False, use_mqa=True)
+    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+                     max_seq_len=1024, use_mla=False, use_mqa=False)
     param_count = sum(p.numel() for p in model.parameters())
+    # roughly 300m
     print("Model has", param_count, "parameters.")
 
     model = model.to(device)
 
-    batch_size = 128 # fairly large batch size since we have the memory
+    batch_size = 4 # should fit on 3090, might take a while
     # lr and betas for adamW from gpt-2-small
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
