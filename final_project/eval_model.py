@@ -21,7 +21,7 @@ def calculate_perplexity(model, data, batch_size, device):
             inputs = torch.tensor(batch[:, :-1]).to(device)
             targets = torch.tensor(batch[:, 1:]).to(device)
 
-            with torch.autocast(device_type=device):
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
                 outputs, _ = model(inputs)
                 loss = torch.nn.functional.cross_entropy(outputs.view(-1, outputs.size(-1)),
                                                          targets.view(-1), reduction='sum')

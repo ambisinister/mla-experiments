@@ -38,13 +38,13 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
         for _ in range(num_tokens_to_generate):
             if kv_cache is None:
                 # for first iteration, process whole prompt
-                with torch.autocast(device_type=device):
+                with torch.autocast(device_type="cuda", dtype=torch.float16)::
                     logits, kv_cache = model(input_ids)
                 next_token_logits = logits[:, -1, :]
                 past_length += input_ids.size()[-1]
             else:                
                 # afterwards, just do last token
-                with torch.autocast(device_type=device):
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
                     logits, kv_cache = model(input_ids[:, -1:], kv_cache,
                                              past_length=past_length)
                 next_token_logits = logits[:, 0, :]

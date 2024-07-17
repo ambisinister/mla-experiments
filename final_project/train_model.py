@@ -40,15 +40,17 @@ def train():
     print("Model has", param_count, "parameters.")
 
     model = model.to(device)
+
+    # gradient scaling and accumulation 
     scaler = GradScaler()
     acc_steps = 4
 
-    batch_size = 8 # should fit on 3090, might take a while
-    # lr and betas for adamW from gpt-2-small
-    opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95)) 
+    batch_size = 32 # should fit on 3090, might take a while
+    # lr and betas for adamW from gpt-2-medium
+    opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.999)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
     # use 1% of the steps for warmup
-    total_steps = 1e8 / batch_size 
+    total_steps = 1e8 / (batch_size * acc_steps)
     scheduler = cosine_with_warmup_lr_scheduler(opt, total_steps, int(total_steps * 0.01))
     loss_fn = torch.nn.CrossEntropyLoss()
 
@@ -74,7 +76,7 @@ def train():
         targ = torch.tensor(batch[:, 1:]).to(device)
 
         # https://pytorch.org/docs/stable/amp.html
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):    
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
             out, _ = model(dat)
             out = out.permute(0, 2, 1)
             loss = loss_fn(out, targ)
@@ -94,7 +96,7 @@ def train():
         # logging total tokens is just S * batch size
         total_tokens += np.prod([*np.shape(batch)])
 
-        # log every 10 batches
+        # log every 10 effective batches
         if ((i // batch_size) + 1) % (10 * acc_steps) == 0:
             train_losses_x.append(total_tokens)
             train_losses_y.append(loss.item())
