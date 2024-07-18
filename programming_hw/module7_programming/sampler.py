@@ -41,6 +41,7 @@ class Sampler:
         self.topp = top_p
         self.frq_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
+        self.temperature = 1
 
     def sample_token(self, raw_unsorted_logits, previous_token_ids):
         '''
@@ -59,11 +60,14 @@ class Sampler:
         
         logits_tensor = torch.tensor(raw_unsorted_logits)
 
+        # move logits to positive range
+        logits_tensor -= torch.min(logits_tensor).item()        
+
         # does the same as argmax sanity check with provided
         # torch.topk doesnt work for me, does it use abs values??
         if self.topk:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
-            logits_tensor[sorted_idx[self.topk:]] = float('-inf')
+            logits_tensor[sorted_idx[self.topk:]] = 0
         
         if self.topp:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
@@ -75,9 +79,24 @@ class Sampler:
             # always leave at least one token
             if len(remove_idx) == len(sorted_logits):
                 remove_idx = remove_idx[1:]
-            logits_tensor[remove_idx] = float('-inf')
+            logits_tensor[remove_idx] = 0
 
-        smax_logits = torch.nn.Softmax()(logits_tensor)
+        # presence penalty (on unique set)
+        pres_vals = torch.ones_like(logits_tensor)
+        pres_vals[list(set(previous_token_ids))] = self.presence_penalty
+
+        # frequency penalty (can be applied multiple times)
+        frq_vals = torch.ones_like(logits_tensor)
+        tokens, counts = torch.unique(torch.tensor(previous_token_ids), return_counts=True)
+        frq_vals[tokens] = self.frq_penalty * counts
+
+        # total penalty vector
+        penalty = pres_vals + frq_vals
+
+        # softmax with changes for sampling
+        logit_exp = torch.exp(logits_tensor) / (self.temperature * penalty)
+        logit_sum = torch.sum(logit_exp) / (self.temperature * penalty)
+        smax_logits = logit_exp / logit_sum
         next_token = torch.multinomial(smax_logits, 1)
         return next_token
 
