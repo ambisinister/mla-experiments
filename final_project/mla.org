@@ -46,11 +46,6 @@ MLA is comparatively very understudied. Some work exists for exploring the prope
 
 Train ~300M models on the same experiments
 
-1. gradient accumulation for larger batch size
-2. autocast / grad scaling for mixed precision training
-3. move to dataloaders for faster data loading
-4. train in f16 if possible??
-
 *** Below is experiments section
 
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full attention vector.
@@ -89,12 +84,13 @@ There are three primary advantages to using MLA over normal multi-head attention
 2. Reduced KV Cache size
 3. Greater expressivity w/ same parameter count and more layers
 
-| Model Description | Training Perplexity | KV Cache Parameters per Token |
-|-------------------+---------------------+-------------------------------|
-| MHA 35M           |               59.25 |                          8192 |
-| MLA 34.6M         |               64.27 |                          1152 |
-| MLA 31M           |               65.12 |                          1024 |
-| MQA 31M Baseline  |               65.79 |                           512 |
+| Model Description | Training Perplexity | KV Cache Parameters / Token / Layer |
+|-------------------+---------------------+-------------------------------------|
+| MHA 35M           |               59.25 |                                8192 |
+| MLA 34.6M         |               64.27 |                                1152 |
+| MLA 31M           |               65.12 |                                1024 |
+| MQA 31M Baseline  |               65.79 |                                 512 |
+| MHA 324M          |               35.91 |                               49152 |
 
 Experiment 1a focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
