@@ -64,23 +64,13 @@ class MHA(torch.nn.Module):
         mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, None, :, :]
 
-        spelled_out = False
-
-        if not spelled_out:
-            sq_mask = mask == 1
+        sq_mask = mask == 1
         
-            # attention
-            x = torch.nn.functional.scaled_dot_product_attention(
-                q_heads, k_heads, v_heads,
-                attn_mask=sq_mask
-            )
-        else:
-            k_heads_t = torch.transpose(k_heads, -2, -1)
-            qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
-            qkt = qkt*mask
-            qkt[qkt==0] = float('-inf')
-            attn = torch.nn.functional.softmax(qkt, dim=-1)
-            x = torch.matmul(attn, v_heads)
+        # attention
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q_heads, k_heads, v_heads,
+            attn_mask=sq_mask
+        )
 
         x = x.transpose(1, 2).reshape(B, S, D)
 
@@ -138,10 +128,12 @@ class RopelessMQA(torch.nn.Module):
         mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, None, :, :]
 
+        sq_mask = mask == 1
+
         # attention
         x = torch.nn.functional.scaled_dot_product_attention(
             q_heads, k_heads, v_heads,
-            attn_mask=mask
+            attn_mask=sq_mask
         )
 
         x = x.transpose(1, 2).reshape(B, S, D)
@@ -222,10 +214,12 @@ class RopelessMLA_Uncompressed(torch.nn.Module):
         mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, None, :, :]
 
+        sq_mask = mask == 1
+
         # attention
         x = torch.nn.functional.scaled_dot_product_attention(
             q_heads, k_heads, v_heads,
-            attn_mask=mask
+            attn_mask=sq_mask
         )
 
         x = x.transpose(1, 2).reshape(B, S, D)
@@ -297,10 +291,12 @@ class RopelessMLA(torch.nn.Module):
         mask = torch.tril(mask, diagonal=past_length)
         mask = mask[None, None, :, :]
 
+        sq_mask = mask == 1
+
         # attention
         x = torch.nn.functional.scaled_dot_product_attention(
             q_heads, k_heads, v_heads,
-            attn_mask=mask
+            attn_mask=sq_mask
         )
 
         x = x.transpose(1, 2).reshape(B, S, D)
@@ -369,7 +365,7 @@ class GPTModel(torch.nn.Module):
 
         self.max_seq_len = max_seq_len
 
-    #@torch.autocast(device_type="cuda")
+    @torch.autocast(device_type="cuda")
     def forward(self, x, kv_cache=None, past_length=0):
         B, S = x.shape
         
@@ -378,8 +374,6 @@ class GPTModel(torch.nn.Module):
         w_emb = self.word_embeddings(x)
         p_emb = self.position_embeddings(positions)
         x = w_emb + p_emb
-
-
 
         updated_kv_cache = []
         for i, layer in enumerate(self.layers):

@@ -15,10 +15,13 @@ def load_model(model_path, device, use_mla=False, use_mqa=False):
     return model
 
 def calculate_cache_size(kv_cache):
-    # MHA 
+    # MHA / MQA
     if isinstance(kv_cache[0], tuple):
         total_params = sum(k.numel() + v.numel() for k, v in kv_cache)
-        num_tokens = kv_cache[0][0].size(1)
+        if len(kv_cache[0][0].size()) == 3:
+            num_tokens = kv_cache[0][0].size(1)
+        else:
+            num_tokens = kv_cache[0][0].size(2)
     # MLA
     else:  
         total_params = sum(tensor.numel() for tensor in kv_cache)
@@ -40,29 +43,29 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
         for _ in range(num_tokens_to_generate):
             if kv_cache is None:
                 # for first iteration, process whole prompt
-                #with torch.autocast(device_type="cuda", dtype=torch.float16):
-                logits, kv_cache = model(input_ids)
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
+                    logits, kv_cache = model(input_ids)
 
                 next_token_logits = logits[:, -1, :]
                 past_length += input_ids.size()[-1]
             else:                
                 # afterwards, just do last token
-                #with torch.autocast(device_type="cuda", dtype=torch.float16):
-                logits, kv_cache = model(input_ids[:, -1:], kv_cache,
-                                         past_length=past_length)
+                with torch.autocast(device_type="cuda", dtype=torch.float16):
+                    logits, kv_cache = model(input_ids[:, -1:], kv_cache,
+                                             past_length=past_length)
                 next_token_logits = logits[:, 0, :]
                 past_length += 1
 
             # Debugging: Compare with full forward pass
-            #with torch.autocast(device_type="cuda"):
-            full_logits, _ = model(input_ids)
+            with torch.autocast(device_type="cuda"):
+                full_logits, _ = model(input_ids)
             diff = torch.abs(full_logits[:, -1, :] - logits[:, -1, :]).max()
             print(f"Max difference at step {past_length}: {diff.item()}")
                 
             next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(-1)
             generated_tokens.append(next_token.item())
             input_ids = torch.cat([input_ids, next_token], dim=-1)
-            #print(f"Params per token: {calculate_cache_size(kv_cache)}")
+            print(f"Params per token: {calculate_cache_size(kv_cache)}")
     
     return tokenizer.decode(generated_tokens)
                                     
@@ -70,9 +73,8 @@ def generate_text(model, tokenizer, prompt, num_tokens_to_generate, device):
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #model_path = "./weights/reference_model.pt"
-    model_path = "./weights/model_weights.pt"
-    use_mla=False
-    use_mqa=False
+    #use_mla=False
+    #use_mqa=False
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
     #use_mqa=True

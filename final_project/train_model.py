@@ -35,12 +35,11 @@ def train():
     # using nvidia rtx 3090
     # roughly gpt-2-medium
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    #model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
-    #                 max_seq_len=1024, use_mla=False, use_mqa=True)
+    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+                     max_seq_len=1024, use_mla=False, use_mqa=False)
 
-    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-                     max_seq_len=1024)
+    #model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+    #                 max_seq_len=1024)
     param_count = sum(p.numel() for p in model.parameters())
     # roughly 300m
     print("Model has", param_count, "parameters.")
@@ -64,8 +63,8 @@ def train():
     with open('./data/packed_data.npy', 'rb') as f:
         data = np.load(f)
 
-    data = data[:100]
-    # use a dataloader, maybe? This shouldn't be why it's slow
+    data = data
+
     dataset = TensorDataset(torch.from_numpy(data[:, :-1]), torch.from_numpy(data[:, 1:]))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -81,11 +80,11 @@ def train():
         print(f"{i}/{len(dataloader)}")
 
         # https://pytorch.org/docs/stable/amp.html
-        #with torch.autocast(device_type="cuda", dtype=torch.float16):
-        out, _ = model(dat)
-        out = out.permute(0, 2, 1)
-        loss = loss_fn(out, targ)
-        loss = loss / acc_steps
+        with torch.autocast(device_type="cuda", dtype=torch.float16):
+            out, _ = model(dat)
+            out = out.permute(0, 2, 1)
+            loss = loss_fn(out, targ)
+            loss = loss / acc_steps
 
         scaler.scale(loss).backward()
 
