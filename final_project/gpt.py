@@ -11,7 +11,6 @@ class CustomLinear(torch.nn.Module):
     def forward(self, x):
         return x @ self.weight.T + self.bias
 
-
 class CustomEmbedding(torch.nn.Module):
 
     def __init__(self, num_embeddings, embedding_dim):
@@ -22,7 +21,7 @@ class CustomEmbedding(torch.nn.Module):
         return self.weight[x]
 
 
-class CustomMHA(torch.nn.Module):
+class MHA(torch.nn.Module):
 
     def __init__(self, d_model, n_heads):
         super().__init__()
@@ -40,46 +39,50 @@ class CustomMHA(torch.nn.Module):
         # queries, keys, and values
         B, S, D = x.shape
         QKV = x @ self.qkv.T # B, S, 3D
+
         Q, K, V = torch.chunk(QKV, 3, -1)
 
         # split into multiple heads
         dh = D//self.n_heads
-        q_heads = torch.reshape(Q, (B, S, self.n_heads, dh))
-        k_heads = torch.reshape(K, (B, S, self.n_heads, dh))
-        v_heads = torch.reshape(V, (B, S, self.n_heads, dh))
 
-        # reshape into (B*h, S, dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, S, dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, S, dh))
+        # We do this all at once because the reshape options are super expensive
+        q_heads = Q.view(B, S, self.n_heads, dh).transpose(1,2)
+        k_heads = K.view(B, S, self.n_heads, dh).transpose(1,2)
+        v_heads = V.view(B, S, self.n_heads, dh).transpose(1,2)
 
         if kv_cache is not None:
             k_cache, v_cache = kv_cache
-            k_heads = torch.cat([k_cache, k_heads], dim=1)
-            v_heads = torch.cat([v_cache, v_heads], dim=1)
+            k_heads = torch.cat([k_cache, k_heads], dim=2)
+            v_heads = torch.cat([v_cache, v_heads], dim=2)
 
         updated_kv_cache = (k_heads, v_heads)
 
-        S_full = k_heads.size(1)
+        S_full = k_heads.size(2)
 
         # make attention mask
-        mask = torch.ones((S,S_full))
+        mask = torch.ones((S,S_full), device=x.device)
         mask = torch.tril(mask, diagonal=past_length)
-        mask = mask[None, :, :]
-        mask = mask.to(x.device)
+        mask = mask[None, None, :, :]
 
-        # attention
-        k_heads_t = torch.transpose(k_heads, 1, 2)
-        qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
-        qkt = qkt*mask
-        qkt[qkt==0] = float('-inf')
-        attn = torch.nn.functional.softmax(qkt, dim=-1)
-        x = torch.matmul(attn, v_heads)
+        spelled_out = False
 
-        # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, S, dh))
-        x = torch.transpose(x, 1, 2) # B, S, h, dh
-        x = torch.reshape(x, (B, S, D))
+        if not spelled_out:
+            sq_mask = mask == 1
+        
+            # attention
+            x = torch.nn.functional.scaled_dot_product_attention(
+                q_heads, k_heads, v_heads,
+                attn_mask=sq_mask
+            )
+        else:
+            k_heads_t = torch.transpose(k_heads, -2, -1)
+            qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
+            qkt = qkt*mask
+            qkt[qkt==0] = float('-inf')
+            attn = torch.nn.functional.softmax(qkt, dim=-1)
+            x = torch.matmul(attn, v_heads)
+
+        x = x.transpose(1, 2).reshape(B, S, D)
 
         # apply projection
         x = x @ self.wo.T
@@ -123,35 +126,25 @@ class RopelessMQA(torch.nn.Module):
         K_expand = K.unsqueeze(2).expand(B, -1, self.n_heads, -1)
         V_expand = V.unsqueeze(2).expand(B, -1, self.n_heads, -1)
 
-        q_heads = torch.reshape(Q, (B, S, self.n_heads, dh))
-        k_heads = torch.reshape(K_expand, (B, -1, self.n_heads, dh))
-        v_heads = torch.reshape(V_expand, (B, -1, self.n_heads, dh))
+        # We do this all at once because the reshape options are super expensive
+        q_heads = Q.view(B, S, self.n_heads, dh).transpose(1,2)
+        k_heads = K_expand.view(B, -1, self.n_heads, dh).transpose(1,2)
+        v_heads = V_expand.view(B, -1, self.n_heads, dh).transpose(1,2)
 
-        # reshape into (B*h, S, dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, S, dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, dh))
-
-        S_full = k_heads.size(1)
-
+        S_full = k_heads.size(2)
+        
         # make attention mask
-        mask = torch.ones((S,S_full))
+        mask = torch.ones((S,S_full), device=x.device)
         mask = torch.tril(mask, diagonal=past_length)
-        mask = mask[None, :, :]
-        mask = mask.to(x.device)
+        mask = mask[None, None, :, :]
 
         # attention
-        k_heads_t = torch.transpose(k_heads, 1, 2)
-        qkt = torch.matmul(q_heads, k_heads_t) / math.sqrt(float(dh))
-        qkt = qkt*mask
-        qkt[qkt==0] = float('-inf')
-        attn = torch.nn.functional.softmax(qkt, dim=-1)
-        x = torch.matmul(attn, v_heads)
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q_heads, k_heads, v_heads,
+            attn_mask=mask
+        )
 
-        # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, S, dh))
-        x = torch.transpose(x, 1, 2) # B, S, h, dh
-        x = torch.reshape(x, (B, S, D))
+        x = x.transpose(1, 2).reshape(B, S, D)
 
         # apply projection
         x = x @ self.wo.T
@@ -212,44 +205,30 @@ class RopelessMLA_Uncompressed(torch.nn.Module):
         K, V = torch.split(KV, self.d_model, dim=-1)
 
         # split into multiple heads
-        q_heads = torch.reshape(Q, (B, -1, self.n_heads, self.dh))
-        k_heads = torch.reshape(K, (B, -1, self.n_heads, self.dh))
-        v_heads = torch.reshape(V, (B, -1, self.n_heads, self.dh))
-
-        # reshape into (B*h, S, self.dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
+        q_heads = Q.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        k_heads = K.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        v_heads = V.view(B, -1, self.n_heads, self.dh).transpose(1,2)
 
         # KV Cache logic
         if kv_cache is not None:
             k_cache, v_cache = kv_cache
-            k_heads = torch.cat([k_cache, k_heads], dim=1)
-            v_heads = torch.cat([v_cache, v_heads], dim=1)
+            k_heads = torch.cat([k_cache, k_heads], dim=2)
+            v_heads = torch.cat([v_cache, v_heads], dim=2)        
+        
+        S_full = k_heads.size(2)
 
-        S_full = k_heads.size(1)
-
-        # compute QK^T / sqrt(d)
-        k_heads_t = torch.transpose(k_heads, 1, 2)
-        qkt = torch.matmul(q_heads, k_heads_t)
-        qkt = qkt / math.sqrt(float(self.dh))
-
-        # Causal Mask
-        mask = torch.ones((S, S_full))
+        # make attention mask
+        mask = torch.ones((S,S_full), device=x.device)
         mask = torch.tril(mask, diagonal=past_length)
-        mask = mask[None, :, :]
-        mask = mask.to(x.device)
-        qkt = qkt*mask
-        qkt[qkt==0] = float('-inf')
+        mask = mask[None, None, :, :]
 
-        # the rest of the attention equation
-        attn = torch.nn.functional.softmax(qkt, dim=-1)
-        x = torch.matmul(attn, v_heads)
+        # attention
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q_heads, k_heads, v_heads,
+            attn_mask=mask
+        )
 
-        # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
-        x = torch.transpose(x, 1, 2) # B, S, h, self.dh
-        x = torch.reshape(x, (B, S, D))
+        x = x.transpose(1, 2).reshape(B, S, D)
 
         # apply projection
         x = x @ self.W_o.T
@@ -307,38 +286,24 @@ class RopelessMLA(torch.nn.Module):
         K, V = torch.split(KV, self.d_model, dim=-1)
 
         # split into multiple heads
-        q_heads = torch.reshape(Q, (B, -1, self.n_heads, self.dh))
-        k_heads = torch.reshape(K, (B, -1, self.n_heads, self.dh))
-        v_heads = torch.reshape(V, (B, -1, self.n_heads, self.dh))
+        q_heads = Q.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        k_heads = K.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        v_heads = V.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        
+        S_full = k_heads.size(2)
 
-        # reshape into (B*h, S, self.dh) so we isolate sequences for each head
-        q_heads = torch.transpose(q_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
-        k_heads = torch.transpose(k_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
-        v_heads = torch.transpose(v_heads, 1, 2).reshape((B*self.n_heads, -1, self.dh))
-
-        S_full = k_heads.size(1)
-
-        # compute QK^T / sqrt(d)
-        k_heads_t = torch.transpose(k_heads, 1, 2)
-        qkt = torch.matmul(q_heads, k_heads_t)
-        qkt = qkt / math.sqrt(float(self.dh))
-
-        # Causal Mask
-        mask = torch.ones((S, S_full))
+        # make attention mask
+        mask = torch.ones((S,S_full), device=x.device)
         mask = torch.tril(mask, diagonal=past_length)
-        mask = mask[None, :, :]
-        mask = mask.to(x.device)
-        qkt = qkt*mask
-        qkt[qkt==0] = float('-inf')
+        mask = mask[None, None, :, :]
 
-        # the rest of the attention equation
-        attn = torch.nn.functional.softmax(qkt, dim=-1)
-        x = torch.matmul(attn, v_heads)
+        # attention
+        x = torch.nn.functional.scaled_dot_product_attention(
+            q_heads, k_heads, v_heads,
+            attn_mask=mask
+        )
 
-        # shmush back into the correct shape
-        x = torch.reshape(x, (B, self.n_heads, S, self.dh))
-        x = torch.transpose(x, 1, 2) # B, S, h, self.dh
-        x = torch.reshape(x, (B, S, D))
+        x = x.transpose(1, 2).reshape(B, S, D)
 
         # apply projection
         x = x @ self.W_o.T
@@ -366,7 +331,7 @@ class TransformerDecoderBlock(torch.nn.Module):
             print("using Multi-Query Attention")
             self.mha = RopelessMQA(d_model, n_heads)
         else:
-            self.mha = CustomMHA(d_model, n_heads)
+            self.mha = MHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
         self.fc1 = CustomLinear(d_model, 4*d_model)
         self.act = torch.nn.ReLU()
@@ -393,27 +358,28 @@ class GPTModel(torch.nn.Module):
         self.word_embeddings = CustomEmbedding(vocab_size, d_model)
         self.position_embeddings = CustomEmbedding(max_seq_len, d_model)
 
-        self.layers = torch.nn.ModuleList()
-        for i in range(layers):
-            block = TransformerDecoderBlock(d_model, n_heads,
-                                            use_mla=use_mla, use_mqa=use_mqa,
-                                            cache_compress=cache_compress)
-            self.layers.append(block)
+        self.layers = torch.nn.ModuleList([
+            TransformerDecoderBlock(d_model, n_heads,
+                                    use_mla=use_mla, use_mqa=use_mqa,
+                                    cache_compress=cache_compress)
+            for _ in range(layers)
+        ])
 
         self.fc_out = CustomLinear(d_model, vocab_size)
 
         self.max_seq_len = max_seq_len
 
-    @torch.autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu')
+    #@torch.autocast(device_type="cuda")
     def forward(self, x, kv_cache=None, past_length=0):
         B, S = x.shape
-        positions = torch.arange(past_length, past_length + S).to(torch.long).to(x.device)
-        positions = positions[None, :]
-        positions = positions.repeat(B, 1)
         
+        positions = torch.arange(past_length, past_length + S, device=x.device).unsqueeze(0).expand(B, -1)
+
         w_emb = self.word_embeddings(x)
         p_emb = self.position_embeddings(positions)
         x = w_emb + p_emb
+
+
 
         updated_kv_cache = []
         for i, layer in enumerate(self.layers):

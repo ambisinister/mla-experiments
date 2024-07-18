@@ -3,6 +3,9 @@ import numpy as np
 from gpt import GPTModel
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler
+from torch.utils.data import DataLoader, TensorDataset
+from torch.profiler import profile, record_function, ProfilerActivity
+import time
 
 def cosine_with_warmup_lr_scheduler(opt, total_steps, warmup_steps):
     def thunk(stepnum):
@@ -33,8 +36,11 @@ def train():
     # roughly gpt-2-medium
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
-                     max_seq_len=1024, use_mla=False, use_mqa=False)
+    #model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+    #                 max_seq_len=1024, use_mla=False, use_mqa=True)
+
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=1024)
     param_count = sum(p.numel() for p in model.parameters())
     # roughly 300m
     print("Model has", param_count, "parameters.")
@@ -45,7 +51,7 @@ def train():
     scaler = GradScaler()
     acc_steps = 4
 
-    batch_size = 32 # should fit on 3090, might take a while
+    batch_size = 8 # should fit on 3090, might take a while
     # lr and betas for adamW from gpt-2-medium
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.999)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -58,6 +64,11 @@ def train():
     with open('./data/packed_data.npy', 'rb') as f:
         data = np.load(f)
 
+    data = data[:100]
+    # use a dataloader, maybe? This shouldn't be why it's slow
+    dataset = TensorDataset(torch.from_numpy(data[:, :-1]), torch.from_numpy(data[:, 1:]))
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+
     #logging
     total_tokens = 0
     train_losses_y = []
@@ -65,39 +76,33 @@ def train():
 
     # epochs = 1
     j = 0
-    for i in range(0, len(data) - batch_size, batch_size):
-        j += 1
-        print(j, i)
-        # batch the data
-        batch = data[i:i + batch_size]
-        
-        # offsets, converting to tensor, and sending to gpu
-        dat = torch.tensor(batch[:, :-1]).to(device)
-        targ = torch.tensor(batch[:, 1:]).to(device)
+    for i, (dat, targ) in enumerate(dataloader):
+        dat, targ = dat.to(device, non_blocking=True), targ.to(device, non_blocking=True)
+        print(f"{i}/{len(dataloader)}")
 
         # https://pytorch.org/docs/stable/amp.html
-        with torch.autocast(device_type="cuda", dtype=torch.float16):
-            out, _ = model(dat)
-            out = out.permute(0, 2, 1)
-            loss = loss_fn(out, targ)
-            loss = loss / acc_steps
-            
+        #with torch.autocast(device_type="cuda", dtype=torch.float16):
+        out, _ = model(dat)
+        out = out.permute(0, 2, 1)
+        loss = loss_fn(out, targ)
+        loss = loss / acc_steps
+
         scaler.scale(loss).backward()
 
-        if (i // batch_size + 1) % acc_steps == 0:
+        if (i+1) % acc_steps == 0:
             scaler.unscale_(opt)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
             scaler.step(opt)
             scaler.update()
             scheduler.step()
-            opt.zero_grad()
+            opt.zero_grad(set_to_none=True)
 
         # logging total tokens is just S * batch size
-        total_tokens += np.prod([*np.shape(batch)])
+        total_tokens += dat.numel()
 
         # log every 10 effective batches
-        if ((i // batch_size) + 1) % (10 * acc_steps) == 0:
+        if (i + 1) % (10 * acc_steps) == 0:
             train_losses_x.append(total_tokens)
             train_losses_y.append(loss.item())
             print(f"{i}/{len(data)}", loss.item())
