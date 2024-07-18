@@ -68,9 +68,11 @@ class Sampler:
         if self.topk:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
             logits_tensor[sorted_idx[self.topk:]] = 0
-        
+
+        # do a prefix sum and pick the top which are below some probability mass 
         if self.topp:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
+            # done on softmax, not logits
             c_probs = torch.cumsum(torch.nn.Softmax()(sorted_logits), dim=-1)
 
             remove_me = c_probs > self.topp
@@ -104,8 +106,6 @@ class Sampler:
     # an alternative way to call sample_token(), for convenience
     def __call__(self, raw_unsorted_logits, previous_token_ids):
         return self.sample_token(raw_unsorted_logits, previous_token_ids)
-
-
 
 
 if __name__ == "__main__":
