@@ -90,7 +90,7 @@ class Sampler:
         # frequency penalty (can be applied multiple times)
         frq_vals = torch.ones_like(logits_tensor)
         tokens, counts = torch.unique(torch.tensor(previous_token_ids), return_counts=True)
-        frq_vals[tokens] = self.frq_penalty * counts
+        frq_vals[tokens] += (1-self.frq_penalty) * counts
 
         # total penalty vector
         penalty = pres_vals + frq_vals
