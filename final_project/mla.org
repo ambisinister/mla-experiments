@@ -91,6 +91,7 @@ There are three primary advantages to using MLA over normal multi-head attention
 | MLA 31M           |               65.12 |                                1024 |
 | MQA 31M Baseline  |               65.79 |                                 512 |
 | MHA 324M          |               35.91 |                               49152 |
+| MLA 279M          |               45.45 |                                6144 |
 
 Experiment 1a focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
