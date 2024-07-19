@@ -38,7 +38,8 @@ class Sampler:
             A penalty of 1.0 indicates no change from normal softmax.
         '''
         self.topk = top_k
-        self.topp = top_p
+        self.topp = top_p # should this be low or high?
+        assert self.topk is None or self.topp is None, "At least one of topk and topp must be None"
         self.frq_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
         self.temperature = 1
@@ -55,7 +56,7 @@ class Sampler:
         returns: a single token id (integer), sampled according to the specified sampling parameters
         '''
 
-        # Sanity test
+        # Sanity test, should output the same as topk=1
         #next_token = torch.argmax(torch.tensor(raw_unsorted_logits), dim=-1).unsqueeze(-1)
         
         logits_tensor = torch.tensor(raw_unsorted_logits)
@@ -64,7 +65,7 @@ class Sampler:
         logits_tensor -= torch.min(logits_tensor).item()        
 
         # does the same as argmax sanity check with provided
-        # torch.topk doesnt work for me, does it use abs values??
+        # torch.topk doesnt work for me, does it use abs values?
         if self.topk:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
             logits_tensor[sorted_idx[self.topk:]] = 0
@@ -90,14 +91,15 @@ class Sampler:
         # frequency penalty (can be applied multiple times)
         frq_vals = torch.ones_like(logits_tensor)
         tokens, counts = torch.unique(torch.tensor(previous_token_ids), return_counts=True)
-        frq_vals[tokens] += (1-self.frq_penalty) * counts
+        for t, c in zip(tokens, counts):
+            frq_vals[t] += (self.frq_penalty-1) * c
 
         # total penalty vector
         penalty = pres_vals + frq_vals
 
         # softmax with changes for sampling
-        logit_exp = torch.exp(logits_tensor) / (self.temperature * penalty)
-        logit_sum = torch.sum(logit_exp) / (self.temperature * penalty)
+        logit_exp = torch.exp(logits_tensor / (self.temperature * penalty))
+        logit_sum = torch.sum(logit_exp / (self.temperature * penalty))
         smax_logits = logit_exp / logit_sum
         next_token = torch.multinomial(smax_logits, 1)
         return next_token
