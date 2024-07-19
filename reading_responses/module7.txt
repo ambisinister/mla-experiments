@@ -1,0 +1,29 @@
+Module 7
+
+Reading and Short Answer Assignment
+
+Assigned: Wednesday, 05/29/2024
+
+Due: Wednesday, 06/05/2024 by 11:59:59 PM
+
+This week you will read a paper that was not discussed in class lecture: the Longformer paper.
+This paper is one of many that have attempted to make a more efficient attention mechanism.
+Please read sections 1 through 4 of the paper:
+https://arxiv.org/pdf/2004.05150.pdf
+
+Questions
+
+Please write a short response (4-5 sentences / short paragraph) to each of the following
+questions / the following question. Your responses will be graded for accuracy, critical thinking,
+and clarity. You may use any common word processing or text format. Please upload your
+answers by the due date.
+
+Question 1: Why does the memory complexity of a transformer expand quadratically when the
+input sequence only expands linearly? How does this limit our ability to build larger and larger
+models?
+
+When performing the attention operation, the objective is to obtain a matrix (S, S), where S is the sequence length, which can be matrix multiplied by the values matrix to get a weighted transformation of the input. In plain english, each token pays attention to each other token, so when you add a new token every existing token has to pay attention to it, and it has to pay attention to every other token. If S grows linearly, (S, S) will grow quadratically. This limits our ability to build larger models because a linear increase in computation power will not yield a linear improvement in our models - for every token we add, it becomes more difficult and expensive to add a new token. 
+
+Question 2: How does the Longformer try to improve on this complexity?
+
+In comparison, Longformer uses masks which prevent the tokens from having to pay attention to most other tokens in the sequence. If each token has a bounded number of possible tokens it has to pay attention to (for example, the 10 closest tokens) then even if the sequence length grows, the number of tokens each token has to pay attention to will only grow by a constant factor and not by a factor of N (i.e. it grows linearly). Longformer uses a combination of sliding window attention (the closest tokens to the input), and global attention on some pre-select locations. The idea here is that you grow the complexity by some constant factor each time, keep the most important attention weights (since nearby is usually most important), and include avenues for any two tokens to pay attention to each other by traversing "paths" of mutually connected global tokens you "pay full price" for. 
