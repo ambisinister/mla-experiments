@@ -40,11 +40,7 @@ In comparison, Multi-head Latent Attention[fn:3] (MLA) is an attention variant i
 
 MLA is comparatively very understudied. Some work exists for exploring the properties of MLA, but a lot of it is Chinese-language blogs[fn:4]. The hope with this work is a straightforward, pedagogical implementation of MLA to aid in understanding the costs and benefits.
 
-** TODO Experiments
-
-*** Yet to be done
-
-Train ~300M models on the same experiments
+** Experiments
 
 *** Below is experiments section
 
@@ -104,7 +100,9 @@ Experiment 1b focuses on the third of these -- We use an explicitly "larger" mod
 
 [[./figures/training_curve_34M.png]]
 
-It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (2*d_head*layers vs 4*d_head*layers) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference. 
+It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (2*d_head*layers vs 4*d_head*layers) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference.
+
+Worth noting is the model's failure to outperform MQA at ~300M parameters. This seems likely related to q vector compression, which by default in the modeling source code uses a lora rank of half the size of the model (i.e. equivalent to not using compression on Q at all). I am going to run an experiment with better values for this, and see if that changes the results at all.
 
 *** Inference Time Experiments
 
