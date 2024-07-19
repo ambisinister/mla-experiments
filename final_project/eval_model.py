@@ -39,8 +39,8 @@ def main():
     #model_path = "./weights/35m_model.pt"
     #model_path = "./weights/mqa_model.pt"
     model_path = "./weights/model_weights.pt"    
-    use_mla = True
-    use_mqa = False
+    use_mla = False
+    use_mqa = True
     data_path = "./data/packed_data.npy"
     batch_size = 16
 

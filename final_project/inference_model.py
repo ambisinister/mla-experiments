@@ -74,8 +74,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #model_path = "./weights/reference_model.pt"
     model_path = "./weights/model_weights.pt"
-    use_mla=True
-    use_mqa=False
+    use_mla=False
+    use_mqa=True
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
     #use_mqa=True
