@@ -160,7 +160,7 @@ class RopelessMLA_Uncompressed(torch.nn.Module):
         self.d_model = d_model
         self.n_heads = n_heads
         self.q_proj_dim = d_model // 2
-        self.kv_proj_dim = d_model // 4
+        self.kv_proj_dim = (2*d_model) // 3
         self.dh = d_model // n_heads
 
         # Q projections
@@ -238,7 +238,7 @@ class RopelessMLA(torch.nn.Module):
         self.d_model = d_model
         self.n_heads = n_heads
         self.q_proj_dim = d_model // 2
-        self.kv_proj_dim = d_model // 4
+        self.kv_proj_dim = (2*d_model) // 3
         self.dh = d_model // n_heads
         
         # Q projections

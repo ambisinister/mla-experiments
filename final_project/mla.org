@@ -80,16 +80,15 @@ There are three primary advantages to using MLA over normal multi-head attention
 2. Reduced KV Cache size
 3. Greater expressivity w/ same parameter count and more layers
 
-| Model Description      | Training Perplexity | KV Cache Parameters / Token / Layer |
-|------------------------+---------------------+-------------------------------------|
-| MHA 35M                |               59.25 |                                8192 |
-| MLA 34.6M              |               64.27 |                                1152 |
-| MLA 31M                |               65.12 |                                1024 |
-| MQA 31M Baseline       |               65.79 |                                 512 |
-| MHA 324M               |               35.91 |                               49152 |
-| MLA 279M               |               45.45 |                                6144 |
-| MLA 292M no q compress |               43.34 |                                3072 |
-| MQA 277M Baseline      |               37.91 |                                3072 |
+| Model Description      | Training Perplexity | KV Cache / Token / Layer |
+|------------------------+---------------------+--------------------------|
+| MHA 35M                |               59.25 |                     8192 |
+| MLA 34.6M              |               64.27 |                     1152 |
+| MLA 31M                |               65.12 |                     1024 |
+| MQA 31M Baseline       |               65.79 |                      512 |
+| MHA 324M               |               35.91 |                    49152 |
+| MLA 323M (no compress) |               36.99 |                    16368 |
+| MQA 277M Baseline      |               37.91 |                     3072 |
 
 Experiment 1a focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
@@ -101,9 +100,9 @@ Experiment 1b focuses on the third of these -- We use an explicitly "larger" mod
 
 [[./figures/training_curve_34M.png]]
 
-It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (2*d_head*layers vs 4*d_head*layers) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference.
+An interesting artifact of storing the intermediate kv vector is that this will reduce the KV cache burden even if this operation does not necessarily constitute compression. At a kv_proj_dim of 2/3 d_model, two layers (X, r) -> (r, 2*X) have the same number of parameters as one layer (X, 2*X), and likewise for 0.5*d_model for q_proj_dim. What this means is that these two models will have equal parameter counts, and these two matrices can be multiplied together to yield a matrix which is the same size as the original W_kv matrix. /Despite that/, you can still store the intermediate vector of (B, k_len, 2/3*d_model) instead of the resulting vector of (B, k_len, d_model), which constitutes a 66% reduction in KV cache burden without the need for any compression. Why this model still underperforms regular MHA is still unclear, since they should be roughly equivalent at these hyperparameters (initialization + layernorms? It should be slower but not worse.) 
 
-Worth noting is the model's failure to outperform MQA at ~300M parameters. This seems likely related to q vector compression, which by default in the modeling source code uses a lora rank of half the size of the model (i.e. equivalent to not using compression on Q at all). I am going to run an experiment with better values for this, and see if that changes the results at all.
+It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (c*d_head*layers where c = 2 for MQA and some value ~4 for MLA) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference.
 
 *** Inference Time Experiments
 

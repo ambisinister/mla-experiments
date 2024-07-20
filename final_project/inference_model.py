@@ -16,6 +16,7 @@ def load_model(model_path, device, use_mla=False, use_mqa=False):
 
 def calculate_cache_size(kv_cache):
     # MHA / MQA
+    print(kv_cache[0].size())
     if isinstance(kv_cache[0], tuple):
         total_params = sum(k.numel() + v.numel() for k, v in kv_cache)
         if len(kv_cache[0][0].size()) == 3:
@@ -74,8 +75,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #model_path = "./weights/reference_model.pt"
     model_path = "./weights/model_weights.pt"
-    use_mla=False
-    use_mqa=True
+    use_mla=True
+    use_mqa=False
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
     #use_mqa=True
