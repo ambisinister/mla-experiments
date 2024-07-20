@@ -80,15 +80,16 @@ There are three primary advantages to using MLA over normal multi-head attention
 2. Reduced KV Cache size
 3. Greater expressivity w/ same parameter count and more layers
 
-| Model Description | Training Perplexity | KV Cache Parameters / Token / Layer |
-|-------------------+---------------------+-------------------------------------|
-| MHA 35M           |               59.25 |                                8192 |
-| MLA 34.6M         |               64.27 |                                1152 |
-| MLA 31M           |               65.12 |                                1024 |
-| MQA 31M Baseline  |               65.79 |                                 512 |
-| MHA 324M          |               35.91 |                               49152 |
-| MLA 279M          |               45.45 |                                6144 |
-| MQA 277M Baseline |               37.91 |                                3072 |
+| Model Description      | Training Perplexity | KV Cache Parameters / Token / Layer |
+|------------------------+---------------------+-------------------------------------|
+| MHA 35M                |               59.25 |                                8192 |
+| MLA 34.6M              |               64.27 |                                1152 |
+| MLA 31M                |               65.12 |                                1024 |
+| MQA 31M Baseline       |               65.79 |                                 512 |
+| MHA 324M               |               35.91 |                               49152 |
+| MLA 279M               |               45.45 |                                6144 |
+| MLA 292M no q compress |               43.34 |                                3072 |
+| MQA 277M Baseline      |               37.91 |                                3072 |
 
 Experiment 1a focuses on the first of these -- We use an explicitly smaller model, and we get comparable (but slightly lower) performance from it.
 
