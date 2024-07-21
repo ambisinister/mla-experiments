@@ -1,9 +1,7 @@
 import torch
 import math
 
-"""
-TODO: Implement RoPE https://github.com/huggingface/transformers/issues/25199#issuecomment-1687720247
-"""
+from utils import apply_rope
 
 class MHA(torch.nn.Module):
 
