@@ -1,6 +1,10 @@
 import torch
 import math
 
+"""
+TODO: Implement RoPE https://github.com/huggingface/transformers/issues/25199#issuecomment-1687720247
+"""
+
 class MHA(torch.nn.Module):
 
     def __init__(self, d_model, n_heads):
