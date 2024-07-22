@@ -10,7 +10,7 @@ In comparison, MLA accomplishes this by using a low-rank factorized projection m
 2. Project the compressed KV latent vector for each head to get the full K and V head corresponding to each Q head.
 3. Cache the compressed latent KV vector instead of each of the KV heads, and compute the KV heads on the fly from the latent vector.
 
-There's also an element of this which makes this compatible with RoPE, which we will revisit later. For simplicity we will start by just exploring what the above part accomplishes differently from normal MHA.
+There is also a component of this which introduces /decoupled RoPE/, making certain attention heads explicitly responsible for the position encoding for the entire block. For simplicity's sake, we start with a version which only uses the low-rank factorization, and then add it back in later.
 
 ** Why Low-Rank Factorization?
 
