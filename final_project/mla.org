@@ -40,6 +40,34 @@ In comparison, Multi-head Latent Attention[fn:3] (MLA) is an attention variant i
 
 MLA is comparatively very understudied. Some work exists for exploring the properties of MLA, but a lot of it is Chinese-language blogs[fn:4]. The hope with this work is a straightforward, pedagogical implementation of MLA to aid in understanding the costs and benefits.
 
+*** Rotary Position Embeddings (RoPE)
+
+RoPE is largely considered the de facto standard for position embeddings in modern LLMs. It works by breaking a vector up into chunks of two and performing a rotation upon adjacent pairs of values in the complex plane.
+
+Similar to using non-learned position encodings, RoPE requires you to create a 2d tensor whose rows correspond to position in the sequence; in this case, this is the outer product between the position and the /frequency/. However, /unlike/ standard position encodings, these vectors are not added to the input, but are instead used to apply a rotation.
+
+#+BEGIN_SRC python
+freqs = 1.0 / (rope_theta ** (torch.arange(0, self.dh, 2).float() / self.dh))
+emb = torch.outer(torch.arange(self.max_seq_len).float(), freqs)
+#+END_SRC
+
+Sine and cosine are applied to this position embedding tensor, indexed by position, and then applied to the query and key heads before the attention computation is performed. The code for applying RoPE is a fairly light lift, even if the mechanism is somewhat difficult to follow.
+
+#+BEGIN_SRC python
+def rotate_half(x):
+    x1, x2 = x.chunk(2, dim=-1)
+    return torch.cat((-x2, x1), dim=-1)
+
+def apply_rope(q, k, cos, sin):
+    q = (q * cos) + (rotate_half(q) * sin)
+    k = (k * cos) + (rotate_half(k) * sin)
+    return q, k
+#+END_SRC
+
+Where q and k are the q and k heads of shape (B, n_heads, S, head_dim), and cos and sin are cosine and sine vectors corresponding to the current position of the sequence. The rotate half function lets us perform this rotation without explicitly dealing with complex numbers -- rotate_half(x) * sin will give us (-b*sin, a*sin), which is equivalent to a multiplication by e^(i*theta) in the complex plane.
+
+Compared to standard position encodings, RoPE is extremely powerful. However, in MLA our KV vector is compressed, which means our K heads are inaccessible at the time we would want to apply RoPE to them. Because RoPE is /so powerful/, we need to take extra steps to figure out a way to make them compatible with the otherwise straightforward MLA mechanism, otherwise even outperforming normal MHA will be of minimal benefit.
+
 ** Experiments
 
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full Q and K vectors.
@@ -141,6 +169,13 @@ Future work here could include:
 - Optimizing the implementation further beyond this toy pedagogical implementation
 
 MLA has demonstrated it's usefulness here in scaling up very large models. However, it remains to be seen if the claimed benefits extend to smaller models.
+
+** Appendix: Other Learnings
+
+- Grad scaling / gradient accumulation
+- Torch autocast for mixed precision training
+- Torch profiling for understanding bottlenecks
+- register buffers
 
 * Footnotes
 

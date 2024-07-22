@@ -4,7 +4,6 @@ from modeling.gpt import GPTModel
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader, TensorDataset
-from torch.profiler import profile, record_function, ProfilerActivity
 import time
 
 def cosine_with_warmup_lr_scheduler(opt, total_steps, warmup_steps):

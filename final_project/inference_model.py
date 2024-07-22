@@ -1,5 +1,5 @@
 import torch
-from gpt import GPTModel
+from modeling.gpt import GPTModel
 from hftokenizer import HFTokenizer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
