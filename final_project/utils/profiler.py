@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.profiler import profile, record_function, ProfilerActivity
 import numpy as np
 
-from gpt import GPTModel
+from ..modeling.gpt import GPTModel
 
 def cosine_with_warmup_lr_scheduler(opt, total_steps, warmup_steps):
     def thunk(stepnum):

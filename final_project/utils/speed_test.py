@@ -1,8 +1,9 @@
 import torch
-from gpt import GPTModel
-from hftokenizer import HFTokenizer
 from matplotlib import pyplot as plt
 import time
+
+from ..modeling.gpt import GPTModel
+from ..hftokenizer import HFTokenizer
 
 def plot_100_out(xs, ys, labs):
     plt.title("Time to generate 100 tokens")

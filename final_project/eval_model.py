@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from gpt import GPTModel
+from modeling.gpt import GPTModel
 
 def load_model(model_path, device, use_mla=False, use_mqa=False, use_rope=False):
     # model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,

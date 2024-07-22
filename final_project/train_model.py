@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from gpt import GPTModel
+from modeling.gpt import GPTModel
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader, TensorDataset
