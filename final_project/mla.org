@@ -70,7 +70,7 @@ Compared to standard position encodings, RoPE is extremely powerful. However, in
 
 Luckily, MLA uniquely offers us an interesting trick. In the RoPE-less case, we just compress down and decompress back up from and to full size. However, theoretically this need not be the case. For example, if we want 16 Q heads and we compress Q down, we can decompress it back up such that it only has 12 Q heads. We can now use a /different/ decompression which decompresses back up to 4 Q heads, and we can concat them together to get our original 16 Q heads.
 
-You could try something similar with normal multi-headed attention, where you chop up your 16 Q heads such that RoPE is only applied to the last 4 of them. But the advantage of using the distinct decompressions to individual heads is that your new RoPE-specific heads will be constructed based off of the full compressed vector, rather than just being a partitioned-off subsection of the original. (Need to think on this more, it's pretty nebulous still).
+You could try something similar with normal multi-headed attention, where you chop up your 16 Q heads such that RoPE is only applied to the last 4 of them. But the advantage of using the distinct decompressions to individual heads is that your new RoPE-specific heads will be constructed based off of the full compressed vector, rather than just being a partitioned-off subsection of the original. That is: the heads responsible for RoPE are aware of the contents of the other heads, which is a benefit unique to MLA's design. (Need to think on this more, it's pretty nebulous still).
 
 ** Experiments
 
