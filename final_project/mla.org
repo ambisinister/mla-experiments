@@ -66,7 +66,11 @@ def apply_rope(q, k, cos, sin):
 
 Where q and k are the q and k heads of shape (B, n_heads, S, head_dim), and cos and sin are cosine and sine vectors corresponding to the current position of the sequence. The rotate half function lets us perform this rotation without explicitly dealing with complex numbers -- rotate_half(x) * sin will give us (-b*sin, a*sin), which is equivalent to a multiplication by e^(i*theta) in the complex plane.
 
-Compared to standard position encodings, RoPE is extremely powerful. However, in MLA our KV vector is compressed, which means our K heads are inaccessible at the time we would want to apply RoPE to them. Because RoPE is /so powerful/, we need to take extra steps to figure out a way to make them compatible with the otherwise straightforward MLA mechanism, otherwise even outperforming normal MHA will be of minimal benefit.
+Compared to standard position encodings, RoPE is extremely powerful. However, in MLA our KV vector is compressed, which means our K heads are inaccessible at the time we would want to apply RoPE to them[fn:6]. Because RoPE is /so powerful/, we need to take extra steps to figure out a way to make them compatible with the otherwise straightforward MLA mechanism, otherwise even outperforming normal MHA will be of minimal benefit.
+
+Luckily, MLA uniquely offers us an interesting trick. In the RoPE-less case, we just compress down and decompress back up from and to full size. However, theoretically this need not be the case. For example, if we want 16 Q heads and we compress Q down, we can decompress it back up such that it only has 12 Q heads. We can now use a /different/ decompression which decompresses back up to 4 Q heads, and we can concat them together to get our original 16 Q heads.
+
+You could try something similar with normal multi-headed attention, where you chop up your 16 Q heads such that RoPE is only applied to the last 4 of them. But the advantage of using the distinct decompressions to individual heads is that your new RoPE-specific heads will be constructed based off of the full compressed vector, rather than just being a partitioned-off subsection of the original. (Need to think on this more, it's pretty nebulous still).
 
 ** Experiments
 
@@ -178,6 +182,8 @@ MLA has demonstrated it's usefulness here in scaling up very large models. Howev
 - register buffers
 
 * Footnotes
+
+[fn:6] Based on our implementation, you might ask why we can't just uncompress the KV vector to full size and then apply RoPE to it. The reason is because during inference, DeepSeek-V2 absorbs the uncompression matrix into the matrix which follows it, because there's no intermediate nonlinearity preventing us from doing so. This is a speedup, but it motivates the need for RoPE applied from the compressed vectors.
 
 [fn:5] For our toy 8 layer model it's (1536(5120 + 24576) < 5120 * 24576)) or (4.5e7 vs 1.2e8) for each example.
 
