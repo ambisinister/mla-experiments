@@ -38,7 +38,7 @@ class Sampler:
             A penalty of 1.0 indicates no change from normal softmax.
         '''
         self.topk = top_k
-        self.topp = top_p # should this be low or high?
+        self.topp = top_p
         assert self.topk is None or self.topp is None, "At least one of topk and topp must be None"
         self.frq_penalty = frequency_penalty
         self.presence_penalty = presence_penalty
@@ -65,7 +65,6 @@ class Sampler:
         logits_tensor -= torch.min(logits_tensor).item()        
 
         # does the same as argmax sanity check with provided
-        # torch.topk doesnt work for me, does it use abs values?
         if self.topk:
             sorted_logits, sorted_idx = torch.sort(logits_tensor, descending=True)
             logits_tensor[sorted_idx[self.topk:]] = 0
@@ -95,7 +94,8 @@ class Sampler:
             frq_vals[t] += (self.frq_penalty-1) * c
 
         # total penalty vector
-        penalty = pres_vals + frq_vals
+        # subtract 1.0 since these will sum to 2 with no change
+        penalty = pres_vals + frq_vals - torch.ones_like(logits_tensor)
 
         # softmax with changes for sampling
         logit_exp = torch.exp(logits_tensor / (self.temperature * penalty))
