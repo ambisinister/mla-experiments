@@ -1,7 +1,7 @@
 import torch
 import math
 
-from utils import apply_rope
+from .utils import apply_rope
 
 class MHA(torch.nn.Module):
 
@@ -74,19 +74,18 @@ class Rope_MHA(torch.nn.Module):
         self.qkv = torch.nn.Parameter(0.01*torch.randn((3*d_model, d_model)))
         self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-        ## RoPE
+        # RoPE
         self.max_seq_len = max_len
         self.rope_theta = rope_theta
-        position = torch.arange(self.max_seq_len).unsqueeze(1)
-        frequency = torch.exp(torch.arange(0, self.dh, 2) * -(math.log(self.rope_theta) / self.dh))
-        pe = torch.zeros(self.max_seq_len, self.dh)
-        pe[:, 0::2] = torch.sin(position * frequency)
-        pe[:, 1::2] = torch.cos(position * frequency)
+        freqs = 1.0 / (rope_theta ** (torch.arange(0, self.dh, 2).float() / self.dh))
+        emb = torch.outer(torch.arange(self.max_seq_len).float(), freqs)
+        cos_cached = emb.cos()[None, None, :, :]
+        sin_cached = emb.sin()[None, None, :, :]
 
         # https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_buffer
         # This is like a parameter but its a constant so we can use register_buffer
-        # we can do self.pe = pe here but it wont save in state dict
-        self.register_buffer('pe', pe)
+        self.register_buffer("cos_cached", cos_cached)
+        self.register_buffer("sin_cached", sin_cached)
 
     def forward(self, x, kv_cache=None, past_length=0):
         added_batch = False
@@ -100,15 +99,13 @@ class Rope_MHA(torch.nn.Module):
 
         Q, K, V = torch.chunk(QKV, 3, -1)
 
-        # split into multiple heads
-        # We do this all at once because the reshape options are super expensive
+        ## Apply RoPE and split into multiple heads
         q_heads = Q.view(B, S, self.n_heads, self.dh).transpose(1,2)
         k_heads = K.view(B, S, self.n_heads, self.dh).transpose(1,2)
         v_heads = V.view(B, S, self.n_heads, self.dh).transpose(1,2)
 
-        ## Apply RoPE
-        cos = self.pe[past_length:past_length+S, None, :self.dh // 2].repeat(1, 2)
-        sin = self.pe[past_length:past_length+S, None, :self.dh // 2].repeat(1, 2)
+        cos = self.cos_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
+        sin = self.sin_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
         q_heads, k_heads = apply_rope(q_heads, k_heads, cos, sin)
 
         if kv_cache is not None:

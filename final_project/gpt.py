@@ -1,7 +1,7 @@
 import torch
 import math
 
-from modeling.attention.mha import MHA
+from modeling.attention.mha import MHA, Rope_MHA
 from modeling.attention.mqa import RopelessMQA
 from modeling.attention.mla import RopelessMLA_Uncompressed, RopelessMLA
 from modeling.layers.customlayers import CustomLinear, CustomEmbedding

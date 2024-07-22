@@ -35,11 +35,11 @@ def train():
     # using nvidia rtx 3090
     # roughly gpt-2-medium
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
-                     max_seq_len=1024, use_mla=True, use_mqa=False)
+    # model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+    #                  max_seq_len=1024, use_mla=True, use_mqa=False)
 
-    #model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-    #                 max_seq_len=1024)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=1024, use_rope=True)
     param_count = sum(p.numel() for p in model.parameters())
     # roughly 300m
     print("Model has", param_count, "parameters.")
@@ -50,7 +50,7 @@ def train():
     scaler = GradScaler()
     acc_steps = 4
 
-    batch_size = 8 # should fit on 3090, might take a while
+    batch_size = 12 # should fit on 3090, might take a while
     # lr and betas for adamW from gpt-2-medium
     opt = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.999)) 
     # determine cosine schedule based on roughly total steps, ~100m token dataset
@@ -63,8 +63,6 @@ def train():
     with open('./data/packed_data.npy', 'rb') as f:
         data = np.load(f)
 
-    data = data
-
     dataset = TensorDataset(torch.from_numpy(data[:, :-1]), torch.from_numpy(data[:, 1:]))
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -74,7 +72,6 @@ def train():
     train_losses_x = []
 
     # epochs = 1
-    j = 0
     for i, (dat, targ) in enumerate(dataloader):
         dat, targ = dat.to(device, non_blocking=True), targ.to(device, non_blocking=True)
         print(f"{i}/{len(dataloader)}")
@@ -104,7 +101,7 @@ def train():
         if (i + 1) % (10 * acc_steps) == 0:
             train_losses_x.append(total_tokens)
             train_losses_y.append(loss.item())
-            print(f"{i}/{len(data)}", loss.item())
+            print(f"{i}/{len(dataloader)}", loss.item())
             plot_loss_curve(train_losses_x, train_losses_y)
 
     # save model weights

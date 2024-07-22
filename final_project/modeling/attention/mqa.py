@@ -1,7 +1,7 @@
 import torch
 import math
 
-from utils import apply_rope_x
+from .utils import apply_rope_x
 
 class RopelessMQA(torch.nn.Module):
 

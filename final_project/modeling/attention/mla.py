@@ -8,7 +8,7 @@ The open source implementation of this actually just uses regular KV caching whi
 import torch
 import math
 
-from utils import apply_rope_x
+from .utils import apply_rope_x
 
 class RopelessMLA_Uncompressed(torch.nn.Module):
 
