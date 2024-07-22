@@ -102,11 +102,12 @@ class Rope_MHA(torch.nn.Module):
 
         Q, K, V = torch.chunk(QKV, 3, -1)
 
-        ## Apply RoPE and split into multiple heads
+        # split into multiple heads
         q_heads = Q.view(B, S, self.n_heads, self.dh).transpose(1,2)
         k_heads = K.view(B, S, self.n_heads, self.dh).transpose(1,2)
         v_heads = V.view(B, S, self.n_heads, self.dh).transpose(1,2)
 
+        ## Apply RoPE
         cos = self.cos_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
         sin = self.sin_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
         q_heads, k_heads = apply_rope(q_heads, k_heads, cos, sin)

@@ -117,8 +117,6 @@ class Rope_MQA(torch.nn.Module):
         # split into multiple heads
         K_expand = K.unsqueeze(2).expand(B, -1, self.n_heads, -1)
         V_expand = V.unsqueeze(2).expand(B, -1, self.n_heads, -1)
-
-        # We do this all at once because the reshape options are super expensive
         q_heads = Q.view(B, S, self.n_heads, self.dh).transpose(1,2)
         k_heads = K_expand.view(B, -1, self.n_heads, self.dh).transpose(1,2)
         v_heads = V_expand.view(B, -1, self.n_heads, self.dh).transpose(1,2)
