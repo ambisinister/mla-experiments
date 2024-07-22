@@ -2,9 +2,12 @@ import torch
 import numpy as np
 from gpt import GPTModel
 
-def load_model(model_path, device, use_mla=False, use_mqa=False):
-    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
-                     max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
+def load_model(model_path, device, use_mla=False, use_mqa=False, use_rope=False):
+    # model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
+    #                  max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa,
+                     use_rope=use_rope)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -38,15 +41,17 @@ def main():
     #model_path = "./weights/reference_model.pt"
     #model_path = "./weights/35m_model.pt"
     #model_path = "./weights/mqa_model.pt"
-    model_path = "./weights/model_weights.pt"    
-    use_mla = True
+    model_path = "./weights/mha_test_rope.pt"    
+    use_mla = False
     use_mqa = False
+    use_rope = True
     data_path = "./data/packed_data.npy"
     batch_size = 16
 
     # Load the model
     model = load_model(model_path, device,
-                       use_mla=use_mla, use_mqa=use_mqa)
+                       use_mla=use_mla, use_mqa=use_mqa,
+                       use_rope=use_rope)
 
     # Load the data
     with open(data_path, 'rb') as f:

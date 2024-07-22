@@ -77,6 +77,9 @@ class Rope_MHA(torch.nn.Module):
         # RoPE
         self.max_seq_len = max_len
         self.rope_theta = rope_theta
+
+        # https://github.com/lucidrains/rotary-embedding-torch/tree/main
+        # visualize emb later to make sure it looks ok
         freqs = 1.0 / (rope_theta ** (torch.arange(0, self.dh, 2).float() / self.dh))
         emb = torch.outer(torch.arange(self.max_seq_len).float(), freqs)
         cos_cached = emb.cos()[None, None, :, :]

@@ -42,8 +42,6 @@ MLA is comparatively very understudied. Some work exists for exploring the prope
 
 ** Experiments
 
-*** Below is experiments section
-
 MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full attention vector.
 
 It's not immediately clear which of these practices contribute to MLA's viability, assuming DeepSeek's claimed improved performance is true. For example, it's possible the low-rank factorization adds a lot, and the RoPE extension salvages some of the lost capability from the effectiveness of RoPE.  It's also possible that a dedicated part of the vector whose purpose is to carry RoPE information is the more beneficial component, and the low-rank steps are a marginal benefit. Likewise, it's also possible both of these by themselves are insufficient to see substantial gains, but together they synergize to perform well. Finally, it's possible that MLA is not inherently superior to MHA at all, but the ability to reduce the burden upon the KV cache makes it worthwhile to use anyways.
@@ -103,6 +101,16 @@ Experiment 1b focuses on the third of these -- We use an explicitly "larger" mod
 An interesting artifact of storing the intermediate kv vector is that this will reduce the KV cache burden even if this operation does not necessarily constitute compression. At a kv_proj_dim of 2/3 d_model, two layers (X, r) -> (r, 2*X) have the same number of parameters as one layer (X, 2*X), and likewise for 0.5*d_model for q_proj_dim. What this means is that these two models will have equal parameter counts, and these two matrices can be multiplied together to yield a matrix which is the same size as the original W_kv matrix. /Despite that/, you can still store the intermediate vector of (B, k_len, 2/3*d_model) instead of the resulting vector of (B, k_len, d_model), which constitutes a 66% reduction in KV cache burden without the need for any compression. Why this model still underperforms regular MHA is still unclear, since they should be roughly equivalent at these hyperparameters (initialization + layernorms? It should be slower but not worse.) 
 
 It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (c*d_head*layers where c = 2 for MQA and some value ~4 for MLA) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference.
+
+Here's a second table whose purpose is to hold experiments which were performed with autocast and rope and stuff.
+
+| Model           | Training Perplexity |
+|-----------------+---------------------|
+| MHA 35M no RoPE |              147.83 |
+| MHA 35M RoPE    |               94.31 |
+
+ok wow
+
 
 *** Inference Time Experiments
 

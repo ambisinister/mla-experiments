@@ -4,11 +4,12 @@ from hftokenizer import HFTokenizer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def load_model(model_path, device, use_mla=False, use_mqa=False):
-    model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
-                     max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
-    # model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+def load_model(model_path, device, use_mla=False, use_mqa=False, use_rope=False):
+    # model = GPTModel(d_model=1024, n_heads=16, layers=24, vocab_size=10000,
     #                  max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
+    model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
+                     max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa,
+                     use_rope=use_rope)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
