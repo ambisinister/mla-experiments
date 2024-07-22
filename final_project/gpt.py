@@ -8,7 +8,8 @@ from modeling.layers.customlayers import CustomLinear, CustomEmbedding
 
 class TransformerDecoderBlock(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads, use_mla=True, use_mqa=False, cache_compress=True):
+    def __init__(self, d_model, n_heads, use_mla=True, use_mqa=False,
+                 cache_compress=True, use_rope=False):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
         if use_mla:
@@ -20,9 +21,17 @@ class TransformerDecoderBlock(torch.nn.Module):
                 self.mha = RopelessMLA_Uncompressed(d_model, n_heads)
         elif use_mqa:
             print("using Multi-Query Attention")
-            self.mha = RopelessMQA(d_model, n_heads)
+            if use_rops:
+                print("using RoPE")
+                self.mha = Rope_MQA(d_model, n_heads)
+            else:
+                self.mha = RopelessMQA(d_model, n_heads)
         else:
-            self.mha = MHA(d_model, n_heads)
+            if use_rope:
+                print("using RoPE")
+                self.mha = Rope_MHA(d_model, n_heads)
+            else:
+                self.mha = MHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
         self.fc1 = CustomLinear(d_model, 4*d_model)
         self.act = torch.nn.ReLU()
@@ -43,16 +52,20 @@ class TransformerDecoderBlock(torch.nn.Module):
 class GPTModel(torch.nn.Module):
 
     def __init__(self, d_model, n_heads, layers, vocab_size,
-                 max_seq_len, use_mla=False, use_mqa=False, cache_compress=True):
+                 max_seq_len, use_mla=False, use_mqa=False,
+                 cache_compress=True, use_rope=False):
         super().__init__()
+        self.use_rope = use_rope
 
         self.word_embeddings = CustomEmbedding(vocab_size, d_model)
-        self.position_embeddings = CustomEmbedding(max_seq_len, d_model)
+        if use_rope == False:
+            self.position_embeddings = CustomEmbedding(max_seq_len, d_model)
 
         self.layers = torch.nn.ModuleList([
             TransformerDecoderBlock(d_model, n_heads,
                                     use_mla=use_mla, use_mqa=use_mqa,
-                                    cache_compress=cache_compress)
+                                    cache_compress=cache_compress,
+                                    use_rope=use_rope)
             for _ in range(layers)
         ])
 
@@ -63,12 +76,15 @@ class GPTModel(torch.nn.Module):
     @torch.autocast(device_type="cuda")
     def forward(self, x, kv_cache=None, past_length=0):
         B, S = x.shape
-        
-        positions = torch.arange(past_length, past_length + S, device=x.device).unsqueeze(0).expand(B, -1)
 
         w_emb = self.word_embeddings(x)
-        p_emb = self.position_embeddings(positions)
-        x = w_emb + p_emb
+        
+        if self.use_rope == False:
+            positions = torch.arange(past_length, past_length + S, device=x.device).unsqueeze(0).expand(B, -1)
+            p_emb = self.position_embeddings(positions)
+            x = w_emb + p_emb
+        else:
+            x = w_emb
 
         updated_kv_cache = []
         for i, layer in enumerate(self.layers):

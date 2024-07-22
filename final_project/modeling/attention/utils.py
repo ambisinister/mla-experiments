@@ -11,6 +11,10 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 def apply_rope(q, k, cos, sin):
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
+    q = (q * cos) + (rotate_half(q) * sin)
+    k = (k * cos) + (rotate_half(k) * sin)
+    return q, k
+
+def apply_rope_x(x, cos, sin):
+    return (x * cos) + (rotate_half(x) * sin)
+
