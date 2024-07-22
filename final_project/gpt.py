@@ -2,7 +2,7 @@ import torch
 import math
 
 from modeling.attention.mha import MHA, Rope_MHA
-from modeling.attention.mqa import RopelessMQA
+from modeling.attention.mqa import RopelessMQA, Rope_MQA
 from modeling.attention.mla import RopelessMLA_Uncompressed, RopelessMLA
 from modeling.layers.customlayers import CustomLinear, CustomEmbedding
 
@@ -21,7 +21,7 @@ class TransformerDecoderBlock(torch.nn.Module):
                 self.mha = RopelessMLA_Uncompressed(d_model, n_heads)
         elif use_mqa:
             print("using Multi-Query Attention")
-            if use_rops:
+            if use_rope:
                 print("using RoPE")
                 self.mha = Rope_MQA(d_model, n_heads)
             else:

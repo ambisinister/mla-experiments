@@ -70,7 +70,7 @@ class RopelessMQA(torch.nn.Module):
 
 class Rope_MQA(torch.nn.Module):
 
-    def __init__(self, d_model, n_heads):
+    def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
@@ -79,19 +79,21 @@ class Rope_MQA(torch.nn.Module):
         self.wkv = torch.nn.Parameter(0.01*torch.randn((d_model, 2 * self.dh)))
         self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
-        ## RoPE
+        # RoPE
         self.max_seq_len = max_len
         self.rope_theta = rope_theta
-        position = torch.arange(self.max_seq_len).unsqueeze(1)
-        frequency = torch.exp(torch.arange(0, self.dh, 2) * -(math.log(self.rope_theta) / self.dh))
-        pe = torch.zeros(self.max_seq_len, self.dh)
-        pe[:, 0::2] = torch.sin(position * frequency)
-        pe[:, 1::2] = torch.cos(position * frequency)
+
+        # https://github.com/lucidrains/rotary-embedding-torch/tree/main
+        # visualize emb later to make sure it looks ok
+        freqs = 1.0 / (rope_theta ** (torch.arange(0, self.dh, 2).float() / self.dh))
+        emb = torch.outer(torch.arange(self.max_seq_len).float(), freqs)
+        cos_cached = emb.cos()[None, None, :, :]
+        sin_cached = emb.sin()[None, None, :, :]
 
         # https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_buffer
         # This is like a parameter but its a constant so we can use register_buffer
-        # we can do self.pe = pe here but it wont save in state dict
-        self.register_buffer('pe', pe)
+        self.register_buffer("cos_cached", cos_cached)
+        self.register_buffer("sin_cached", sin_cached)
 
     def forward(self, x, kv_cache=None, past_length=0):
         added_batch = False
@@ -123,13 +125,13 @@ class Rope_MQA(torch.nn.Module):
 
         S_full = k_heads.size(2)        
 
-        ## Apply RoPE
-        cos_q = self.pe[past_length:past_length+S, None, :self.dh // 2].repeat(1, 2)
-        sin_q = self.pe[past_length:past_length+S, None, :self.dh // 2].repeat(1, 2)
+        ## Apply RoPE        
+        cos_q = self.cos_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
+        sin_q = self.sin_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
         q_heads = apply_rope_x(q_heads, cos_q, sin_q)
-
-        cos_k = self.pe[:S_full, None, :self.dh // 2].repeat(1, 2)
-        sin_k = self.pe[:S_full, None, :self.dh // 2].repeat(1, 2)
+        
+        cos_k = self.cos_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
+        sin_k = self.sin_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
         k_heads = apply_rope_x(k_heads, cos_k, sin_k)
 
         # make attention mask

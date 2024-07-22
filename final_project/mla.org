@@ -78,12 +78,19 @@ There are three primary advantages to using MLA over normal multi-head attention
 2. Reduced KV Cache size
 3. Greater expressivity w/ same parameter count and more layers
 
+sq len 256
+
 | Model Description      | Training Perplexity | KV Cache / Token / Layer |
 |------------------------+---------------------+--------------------------|
 | MHA 35M                |               59.25 |                     8192 |
 | MLA 34.6M              |               64.27 |                     1152 |
 | MLA 31M                |               65.12 |                     1024 |
 | MQA 31M Baseline       |               65.79 |                      512 |
+
+sq len 1024
+
+| Model Description      | Training Perplexity | KV Cache / Token / Layer |
+|------------------------+---------------------+--------------------------|
 | MHA 324M               |               35.91 |                    49152 |
 | MLA 323M (no compress) |               36.99 |                    16368 |
 | MQA 277M Baseline      |               37.91 |                     3072 |
@@ -102,15 +109,17 @@ An interesting artifact of storing the intermediate kv vector is that this will 
 
 It is somewhat notable that the model outperforms MQA in training perplexity -- both of these methods scale the same in terms of cache size (c*d_head*layers where c = 2 for MQA and some value ~4 for MLA) so MLA can be thought of as using a roughly equivalent KV cache size as MQA while maintaining greater expressive power, at the cost of marginally slower inference.
 
-Here's a second table whose purpose is to hold experiments which were performed with autocast and rope and stuff.
+Here's a second table whose purpose is to hold experiments which were performed with autocast and rope and stuff. I use a sequence length of 1024 here so the perplexity is a bit higher. 100M tokens.
 
 | Model           | Training Perplexity |
 |-----------------+---------------------|
-| MHA 35M no RoPE |              147.83 |
 | MHA 35M RoPE    |               94.31 |
+| MQA 32M RoPE    |              102.18 |
+| MLA 35M no RoPE |              142.77 |
+| MHA 35M no RoPE |              147.83 |
+| MQA 32M no RoPE |              155.44 |
 
 ok wow
-
 
 *** Inference Time Experiments
 
