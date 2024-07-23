@@ -21,7 +21,7 @@ answers by the due date.
 
 Question 1: What is a “scaling law”, and how is it useful when designing LLMs?
 
-A scaling law is a relationship between some properties of interest of a model (e.g. parameter count, training tokens) and some measure of interest (e.g. training loss) which are able to be represented by a simple model. This is super useful because we don't actually need to train a bunch of huge models in order to infer what huge models will be like -- if we do a bunch of experiments on smaller models, then we can accurately predict how a bigger model will perform, by projecting the performance based on the scaling law.
+A scaling law is a relationship between some properties of interest of a model (e.g. parameter count, training tokens) and some measure of interest (e.g. training loss) which are able to be represented by a simple model. This is super useful because we don't actually need to train a bunch of huge models in order to infer what huge models will be like -- if we do a bunch of experiments on smaller models, then we can accurately predict how a bigger model will perform, by projecting the performance based on the scaling law. Likewise, scaling laws are helpful because they inform us about what axes are most effective to adjust when scaling up a model provided some fixed compute budget: making the model bigger and making the dataset bigger both improve performance, but since we can't just use an infinitely large dataset and an infinitely large model, it's helpful to know how much we should scale these things to get the best results in the case where one might be more useful than the other.
 
 Question 2: What is the key insight from Chinchilla’s scaling laws compared to previous work?
 
