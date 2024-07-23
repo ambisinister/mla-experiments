@@ -251,8 +251,7 @@ class MLA(torch.nn.Module):
             compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
 
         KV = compressed_kv @ self.W_ukv
-        ## How do I do this uneven split? V gets self.d_model, K gets self.k_nope_dim
-        K, V = torch.split(KV, self.d_model, dim=-1)
+        K, V = torch.split(KV, [self.k_nope_dim, self.d_model], dim=-1)
 
         S_full = K.size(1)
 
@@ -261,7 +260,7 @@ class MLA(torch.nn.Module):
         K_for_rope = K_for_rope.view(B, -1, self.rope_heads, self.dh).transpose(1,2)
         cos_k = self.cos_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
         sin_k = self.sin_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
-        K = K.view(B, -1, self.dim_heads, self.dh)
+        K = K.view(B, -1, self.dim_heads, self.dh).transpose(1,2)
         K_for_rope = apply_rope_x(K_for_rope, cos_k, sin_k)
 
         # split into multiple heads                        
