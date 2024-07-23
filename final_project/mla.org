@@ -170,6 +170,7 @@ Overall, MLA's claimed equivalent-or-superior performance over MHA from the Deep
 
 Future work here could include:
 - Using a much larger model on a bigger dataset to measure capability directly
+- Implementing the matrix absorptions at inference time to reduce this throughput problem
 - Optimizing the implementation further beyond this toy pedagogical implementation
 
 MLA has demonstrated it's usefulness here in scaling up very large models. However, it remains to be seen if the claimed benefits extend to smaller models.

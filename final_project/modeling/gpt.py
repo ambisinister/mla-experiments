@@ -3,7 +3,7 @@ import math
 
 from modeling.attention.mha import MHA, Rope_MHA
 from modeling.attention.mqa import RopelessMQA, Rope_MQA
-from modeling.attention.mla import RopelessMLA_Uncompressed, RopelessMLA
+from modeling.attention.mla import RopelessMLA_Uncompressed, RopelessMLA, MLA
 from modeling.layers.customlayers import CustomLinear, CustomEmbedding
 
 class TransformerDecoderBlock(torch.nn.Module):
@@ -14,11 +14,15 @@ class TransformerDecoderBlock(torch.nn.Module):
         self.norm1 = torch.nn.LayerNorm((d_model,))
         if use_mla:
             print("using Multi-head Latent Attention")
-            if cache_compress:
-                self.mha = RopelessMLA(d_model, n_heads)
-            else:
+            if not cache_compress:
                 print("using regular KV Cache")
                 self.mha = RopelessMLA_Uncompressed(d_model, n_heads)
+            else:
+                if use_rope:
+                    print("using RoPE")
+                    self.mha = MLA(d_model, n_heads)
+                else:
+                    self.mha = RopelessMLA(d_model, n_heads)
         elif use_mqa:
             print("using Multi-Query Attention")
             if use_rope:
