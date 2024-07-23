@@ -13,11 +13,6 @@ class MHA(torch.nn.Module):
         self.wo = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
     def forward(self, x, kv_cache=None, past_length=0):
-        added_batch = False
-        if len(x.shape) == 2:
-            added_batch = True
-            x = x[None,:,:]
-
         # queries, keys, and values
         B, S, D = x.shape
         QKV = x @ self.qkv.T # B, S, 3D
@@ -59,9 +54,6 @@ class MHA(torch.nn.Module):
         # apply projection
         x = x @ self.wo.T
 
-        if added_batch:
-            x = x[0]
-
         return x, updated_kv_cache
 
 class Rope_MHA(torch.nn.Module):
@@ -91,11 +83,6 @@ class Rope_MHA(torch.nn.Module):
         self.register_buffer("sin_cached", sin_cached)
 
     def forward(self, x, kv_cache=None, past_length=0):
-        added_batch = False
-        if len(x.shape) == 2:
-            added_batch = True
-            x = x[None,:,:]
-
         # queries, keys, and values
         B, S, D = x.shape
         QKV = x @ self.qkv.T # B, S, 3D
@@ -136,9 +123,6 @@ class Rope_MHA(torch.nn.Module):
 
         # apply projection
         x = x @ self.wo.T
-
-        if added_batch:
-            x = x[0]
 
         return x, (k_heads, v_heads)
     

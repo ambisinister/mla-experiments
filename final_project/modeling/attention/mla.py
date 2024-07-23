@@ -34,11 +34,6 @@ class RopelessMLA_Uncompressed(torch.nn.Module):
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
     def forward(self, x, kv_cache=None, past_length=0):
-        added_batch = False
-        if len(x.shape) == 2:
-            added_batch = True
-            x = x[None,:,:]
-
         # queries, keys, and values
         B, S, D = x.shape
 
@@ -84,9 +79,6 @@ class RopelessMLA_Uncompressed(torch.nn.Module):
         # apply projection
         x = x @ self.W_o.T
 
-        if added_batch:
-            x = x[0]
-
         return x, (k_heads, v_heads)
 
 class RopelessMLA(torch.nn.Module):
@@ -112,11 +104,6 @@ class RopelessMLA(torch.nn.Module):
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
 
     def forward(self, x, kv_cache=None, past_length=0):
-        added_batch = False
-        if len(x.shape) == 2:
-            added_batch = True
-            x = x[None,:,:]
-            
         B, S, D = x.size()
 
         # Q Projections
@@ -160,9 +147,6 @@ class RopelessMLA(torch.nn.Module):
 
         # apply projection
         x = x @ self.W_o.T
-
-        if added_batch:
-            x = x[0]
 
         return x, compressed_kv
     
@@ -221,11 +205,6 @@ class MLA(torch.nn.Module):
         self.register_buffer("sin_cached", sin_cached)
 
     def forward(self, x, kv_cache=None, past_length=0):
-        added_batch = False
-        if len(x.shape) == 2:
-            added_batch = True
-            x = x[None,:,:]
-            
         B, S, D = x.size()
 
         # Q Projections
@@ -286,9 +265,6 @@ class MLA(torch.nn.Module):
 
         # apply projection
         x = x @ self.W_o.T
-
-        if added_batch:
-            x = x[0]
 
         return x, compressed_kv
     

@@ -1,4 +1,5 @@
 #+TITLE: On MLA
+#+AUTHOR: Eryk Banatt
 
 * On Multi-Head Latent Attention
 
