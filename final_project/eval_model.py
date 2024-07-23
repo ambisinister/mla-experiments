@@ -41,10 +41,10 @@ def main():
     #model_path = "./weights/reference_model.pt"
     #model_path = "./weights/35m_model.pt"
     #model_path = "./weights/mqa_model.pt"
-    model_path = "./weights/mla_test.pt" 
+    model_path = "./weights/mla_test_rope.pt" 
     use_mla = True
     use_mqa = False
-    use_rope = False
+    use_rope = True
     data_path = "./data/packed_data.npy"
     batch_size = 16
 

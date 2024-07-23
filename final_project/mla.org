@@ -95,7 +95,6 @@ We use a sequence length of 1024, and a batch size of 12. For all models we trai
 With experiment 1 in mind, we re-introduce Rotary Position Embeddings (RoPE) for MLA, MQA, and MHA. RoPE yields substantial performance gains in most language modeling tasks, and the important ablation from experiment 1 will tell us a substantial degree about why MLA performs the way it does. 
 
 TODO:
-- MLA with RoPE
 - MHA with decoupled RoPE
 
 *** Experiment 3
@@ -112,9 +111,9 @@ TODO: kv cache results for these models, MLA with RoPE
 
 | Model             | Training Perplexity |
 |-------------------+---------------------|
-| MLA 35M RoPE      |                     |
 | *MHA 35M RoPE*    |             *94.31* |
 | MQA 32M RoPE      |              102.18 |
+| MLA 35M RoPE      |              106.04 |
 | *MLA 35M no RoPE* |            *142.77* |
 | MHA 35M no RoPE   |              147.83 |
 | MQA 32M no RoPE   |              155.44 |

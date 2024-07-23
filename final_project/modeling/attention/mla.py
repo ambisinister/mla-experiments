@@ -168,7 +168,7 @@ class RopelessMLA(torch.nn.Module):
     
 # TODO: Implement with RoPE
 class MLA(torch.nn.Module):
-    def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0, rope_heads=2):
+    def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0, rope_heads=1):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
