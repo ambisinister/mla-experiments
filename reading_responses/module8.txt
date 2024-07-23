@@ -1,0 +1,30 @@
+Module 8
+
+Reading and Short Answer Assignment
+
+Due by 11:59:59 PM on the date of our next module lecture.
+
+This week you will read a summary of the findings from Google Deepmind’s 2022 Chinchilla
+paper, which was a turning point for the field in how we scale our models. If you are interested in
+reading more, the full paper is here (optional): https://arxiv.org/abs/2203.15556
+
+Please read this blog post:
+
+https://www.alignmentforum.org/posts/6Fpvch8RR29qLEWNH/chinchilla-s-wild-implications
+
+Questions
+
+Please write a short response (4-5 sentences / short paragraph) to each of the following
+questions / the following question. Your responses will be graded for accuracy, critical thinking,
+and clarity. You may use any common word processing or text format. Please upload your
+answers by the due date.
+
+Question 1: What is a “scaling law”, and how is it useful when designing LLMs?
+
+A scaling law is a relationship between some properties of interest of a model (e.g. parameter count, training tokens) and some measure of interest (e.g. training loss) which are able to be represented by a simple model. This is super useful because we don't actually need to train a bunch of huge models in order to infer what huge models will be like -- if we do a bunch of experiments on smaller models, then we can accurately predict how a bigger model will perform, by projecting the performance based on the scaling law.
+
+Question 2: What is the key insight from Chinchilla’s scaling laws compared to previous work?
+
+Before Chinchilla, everybody was listening to the OpenAI Scaling Laws for Neural Language Models paper from 2020, which showed that using a really big model is way more important for performance. Chinchilla ran similar experiments on a much larger scale, and they found that these huge models were way undertrained, and that you could instead train much smaller models on way more training tokens and get similar results to these huge models. For example, Megatron-NLG 530B was a model trained with 530 billion parameters and 270B tokens, and Chinchilla trained a 70 billion parameter model to get better performance than Megatron-NLG by training on 1.4 trillion tokens.
+
+This had pretty huge influence on the LLM landscape, and now scaling laws are a really important part both of experimental design in training + discussing what future model performance would be like. 
