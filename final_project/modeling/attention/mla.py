@@ -153,7 +153,6 @@ class RopelessMLA(torch.nn.Module):
 
         return x, compressed_kv
     
-# TODO: Implement with RoPE
 class MLA(torch.nn.Module):
     def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0):
         super().__init__()
@@ -163,8 +162,8 @@ class MLA(torch.nn.Module):
         self.q_proj_dim = d_model // 2
         self.kv_proj_dim = (2*d_model) // 3
 
-        self.qk_nope_dim = 3 * (self.dh // 4)
-        self.qk_rope_dim = self.dh // 4
+        self.qk_nope_dim = self.dh // 2
+        self.qk_rope_dim = self.dh // 2
         
         ## Q projections
         # Lora

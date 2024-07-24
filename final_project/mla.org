@@ -113,13 +113,13 @@ TODO: kv cache results for these models, MLA with RoPE
 | Model             | Training Perplexity |
 |-------------------+---------------------|
 | *MHA 35M RoPE*    |             *94.31* |
+| MLA 35M RoPE      |              96.70  |
 | MQA 32M RoPE      |              102.18 |
-| MLA 35M RoPE      |              106.04 |
 | *MLA 35M no RoPE* |            *142.77* |
 | MHA 35M no RoPE   |              147.83 |
 | MQA 32M no RoPE   |              155.44 |
 
-In the above table we see training perplexity results for experiments 1 and 2. Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we include RoPE embeddings, it's not 100% clear since we have not implemented full MLA yet ((TODO))
+In the above table we see training perplexity results for experiments 1 and 2. Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, so the results are somewhat unclear.
 
 Below we scale the above experiment to a ~300M parameter model.
 
