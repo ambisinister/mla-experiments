@@ -187,6 +187,7 @@ class MLA(torch.nn.Module):
 
         # https://github.com/lucidrains/rotary-embedding-torch/tree/main
         # visualize emb later to make sure it looks ok
+        # we do self.dh here instead of self.qk_rope_dim because its better
         freqs = 1.0 / (rope_theta ** (torch.arange(0, self.dh, 2).float() / self.dh))
         emb = torch.outer(torch.arange(self.max_seq_len).float(), freqs)
         cos_cached = emb.cos()[None, None, :, :]

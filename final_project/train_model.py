@@ -25,10 +25,10 @@ def cosine_with_warmup_lr_scheduler(opt, total_steps, warmup_steps):
 # Helper function to plot a loss curve every few batches
 def plot_loss_curve(x, y):
     plt.plot(x, y)
-    plt.title("LLM Training Loss w/ MLA - Larger Model")
+    plt.title("LLM Training Loss w/ MQA - with RoPE")
     plt.xlabel("tokens")
     plt.ylabel("cross entropy loss")
-    plt.savefig("./figures/training_curve.png")
+    plt.savefig("./figures/mqa_rope_training_curve.png")
 
 def train():
     # using nvidia rtx 3090
@@ -38,7 +38,7 @@ def train():
     #                  max_seq_len=1024, use_mla=True, use_mqa=False)
 
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-                     max_seq_len=1024, use_rope=True, use_mla=True)
+                     max_seq_len=1024, use_rope=True, use_mqa=True)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 

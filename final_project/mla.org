@@ -108,18 +108,18 @@ Likewise, we invert the previous test and use a variable prompt of between 20 an
 
 *** Modeling Results
 
-TODO: kv cache results for these models, MLA with RoPE
+TODO: kv cache results for MLA w/ RoPE
 
 | Model             | Training Perplexity |
 |-------------------+---------------------|
 | *MHA 35M RoPE*    |             *94.31* |
-| MLA 35M RoPE      |              96.70  |
+| MLA 35M RoPE      |               96.70 |
 | MQA 32M RoPE      |              102.18 |
 | *MLA 35M no RoPE* |            *142.77* |
 | MHA 35M no RoPE   |              147.83 |
 | MQA 32M no RoPE   |              155.44 |
 
-In the above table we see training perplexity results for experiments 1 and 2. Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, so the results are somewhat unclear.
+In the above table we see training perplexity results for experiments 1 and 2. Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, but the results are pretty similar to MHA despite KV cache reduction.
 
 Below we scale the above experiment to a ~300M parameter model.
 
@@ -129,13 +129,17 @@ Below we scale the above experiment to a ~300M parameter model.
 | MLA 323M no RoPE  |               36.99 |                    16368 |
 | MQA 277M no RoPE  |               37.91 |                     3072 |
 
-TODO: Regen these curves for small models without RoPE
+[[./figures/mha_rope_training_curve.png]]
 
-[[./figures/reference_training_curve.png]]
+[[./figures/mla_rope_training_curve.png]]
 
-[[./figures/training_curve_31M.png]]
+[[./figures/mqa_rope_training_curve.png]]
 
-[[./figures/training_curve_34M.png]]
+[[./figures/mla_training_curve.png]]
+
+[[./figures/mha_training_curve.png]]
+
+[[./figures/mqa_training_curve.png]]
 
 An interesting artifact of storing the intermediate kv vector is that this will reduce the KV cache burden even if this operation does not necessarily constitute compression. With no RoPE, at a kv_proj_dim of 2/3 d_model, two layers (X, r) -> (r, 2*X) have the same number of parameters as one layer (X, 2*X), and likewise for 0.5*d_model for q_proj_dim. What this means is that these two models will have equal parameter counts, and these two matrices can be multiplied together to yield a matrix which is the same size as the original W_kv matrix. /Despite that/, you can still store the intermediate vector of (B, k_len, 1/3*d_model) instead of the resulting vector of (B, k_len, d_model), which constitutes a 66% reduction in KV cache burden without the need for any compression.
 
@@ -180,7 +184,8 @@ MLA has demonstrated it's usefulness here in scaling up very large models. Howev
 - Grad scaling / gradient accumulation
 - Torch autocast for mixed precision training
 - Torch profiling for understanding bottlenecks
-- register buffers
+- Register buffers
+- Designating specific Q and K heads in MLA as "RoPE heads" does much much worse
 
 * Footnotes
 
