@@ -15,11 +15,17 @@ There is also an additional component of MLA which outlines /decoupled RoPE/. In
 
 ** Why Low-Rank Factorization?
 
-Using two matrices instead of one, in theory, has some tradeoffs. The practice of factorizing a matrix (in this case the Q and KV matrices) into a product of matrices (in this case the compression and decompression matrices) is called /matrix decomposition/. The case here, where we are decomposing a matrix (a, b) into two matrices (a, r), (r, b), is called /rank factorization/. You can pretty much always do this, but the smaller the value of /r/ the more likely you will lose substantial data about your original matrix.
+Using two matrices instead of one, in theory, has some tradeoffs. The practice of factorizing a matrix (in this case the Q and KV matrices) into a product of matrices (in this case the compression and decompression matrices) is called /matrix decomposition/. The case here, where we are decomposing a matrix (a, b) into two matrices (a, r), (r, b), is called /rank factorization/. A matrix of any shape can be decomposed into two matrices this way, but the lower the value of r the lower the space of possible matrices that can be perfectly reconstructed.
 
-When using low-rank factorization for layers in a neural network, the good things are that the compressed matrices use fewer parameters[fn:5], and are somewhat more expressive (by virtue of having two layers sometimes separated by a nonlinearity like a layernorm or activation). They can end up roughly approximate or equivalent to one larger matrix, so in theory you could multiply the weights of these matrices together to "retrieve your original matrix", albeit with some compression loss.
+<<insert low rank manim gif here>>
+
+When using low-rank factorization for layers in a neural network, the good things are that the compressed matrices use fewer parameters[fn:5], and are somewhat more expressive (by virtue of having two layers sometimes separated by a nonlinearity like a layernorm or activation). They can end up roughly approximate or equivalent to one larger matrix, so in theory you could multiply the weights of these matrices together to retrieve an approximation of your original matrix.
 
 The weaknesses of doing this are that we now have to perform 2 operations for every time we use this (i.e. we double the total matmuls for each layer we compress and decompress, in exchange for making them small), and will obviously lose some of the original representation power of the original matrix, in the case where we compress to a smaller number of parameters. You can think of low-rank decomposition as trading memory costs for computation costs -- variants of this are popular for things like finetuning and here for kv-cache reduction, since those things are gated by total memory cost rather than computational overhead or inference speed. 
+
+Using this in the attention mechanism is interesting -- it can be thought of as reducing the space of the possible W_QKV matrices to only ones which are of a certain rank. The bet with multi-head latent attention is that this does not harm downstream performance too much. If obtaining Q, K, and V from the hidden states is possible with a low-rank matrix (alternatively, if the matrix you would get training normally can be closely approximated by a low-rank matrix), then we can compress substantially for theoretically minimal performance loss.
+
+<<insert illustration of possible W space here>>
 
 In our case, we are hoping that we can preserve the functionality of W_qkv as much as possible while reducing the size of the cache by as much as we can. This should, in theory, allow us to enjoy the performance of normal multi-head attention while keeping the kv cache overhead minimal.
 
@@ -30,6 +36,8 @@ In our case, we are hoping that we can preserve the functionality of W_qkv as mu
 The core problem being tackled by Multi-head Latent Attention is the KV caching problem. In autoregressive generation, you predict the next token given some context of previous tokens, and then add that token back into the context repeatedly. Naively, this means you have to recompute the same K and V computations over and over again, since you have to do the full attention computation on N tokens, then N+1 tokens, then N+2 tokens, etc. 
 
 It would be much preferable if we could just input the most recent token and then predict the next token from there. However, we need the entire context's worth of K and V values to complete the attention computation. Luckily, because each word in the sentence can only attend to previous words in the sentence, the K and V values for the N-1 tokens are the exact same in every subsequent computation. This means you can store the values of K and V, only calculate the new K and V for the newly added token, and then just concatenate them with the previous stored K and V to get the same full K and V vector. This speeds up autoregressive generation an extremely significant amount, especially at larger model sizes, but there's a catch -- now you are bottlenecked by memory rather than computation. 
+
+<<kv caching manim here>>
 
 Scaling these models to very large sizes with very large context windows means that the subsequent KV cache will be prohibitively large, making scaling while maintaining this KV caching strategy prohibitively expensive. To tackle this newly emerged problem, many have proposed variants to the original Multi-head attention formulation.
 
@@ -68,6 +76,8 @@ def apply_rope(q, k, cos, sin):
 Where q and k are the q and k heads of shape (B, n_heads, S, head_dim), and cos and sin are cosine and sine vectors corresponding to the current position of the sequence. The rotate half function lets us perform this rotation without explicitly dealing with complex numbers -- rotate_half(x) * sin will give us (-b*cos, a*sin), which is equivalent to a multiplication by e^(i*theta) in the complex plane.
 
 Compared to standard position encodings, RoPE is extremely powerful. However, in MLA our KV vector is compressed, which means our K heads are inaccessible at the time we would want to apply RoPE to them[fn:6]. Because RoPE is /so powerful/, we need to take extra steps to figure out a way to make them compatible with the otherwise straightforward MLA mechanism, otherwise even outperforming normal MHA will be of minimal benefit.
+
+<<mla rope tensor manim here>>
 
 Luckily, MLA uniquely offers us an interesting trick. In the RoPE-less case, we just compress down and decompress back up from and to full size. However, theoretically this need not be the case. For example, consider the case where you have a head dimension of 128. You can project up such that your "heads" are instead of a head dimension of 64. Simultaneously, you can extract a version of Q and K whose purpose is to carry the RoPE position encodings, also of size 64, from the compressed Q and K matrices. Then you can concat a copy of this to each of our shrunken heads in order to arrive back at our original head dimension of 128. In this case, we save some parameters decompressing up to a smaller size, and we can reuse the same position-encoded RoPE Q and K for each head, saving some redundant computation.
 
