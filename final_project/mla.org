@@ -11,7 +11,7 @@ In comparison, MLA accomplishes this by using a low-rank factorized projection m
 2. Project the compressed KV latent vector for each head to get the full K and V head corresponding to each Q head.
 3. Cache the compressed latent KV vector instead of each of the KV heads, and compute the KV heads on the fly from the latent vector.
 
-There is also a component of this which introduces /decoupled RoPE/, making certain attention heads explicitly responsible for the position encoding for the entire block. For simplicity's sake, we start with a version which only uses the low-rank factorization, and then add it back in later.
+There is also an additional component of MLA which outlines /decoupled RoPE/. In this component, they make MLA compatible with RoPE by designating a specific part of each Q and K head to specifically carry RoPE, calculate this directly from the compressed KV vector, and then duplicate this across all Q and K heads to avoid each head redundantly learning the significance of position embeddings. For simplicity's sake, we start with a version which only uses the low-rank factorization, and then add this decoupled RoPE back in later.
 
 ** Why Low-Rank Factorization?
 
@@ -65,27 +65,27 @@ def apply_rope(q, k, cos, sin):
     return q, k
 #+END_SRC
 
-Where q and k are the q and k heads of shape (B, n_heads, S, head_dim), and cos and sin are cosine and sine vectors corresponding to the current position of the sequence. The rotate half function lets us perform this rotation without explicitly dealing with complex numbers -- rotate_half(x) * sin will give us (-b*sin, a*sin), which is equivalent to a multiplication by e^(i*theta) in the complex plane.
+Where q and k are the q and k heads of shape (B, n_heads, S, head_dim), and cos and sin are cosine and sine vectors corresponding to the current position of the sequence. The rotate half function lets us perform this rotation without explicitly dealing with complex numbers -- rotate_half(x) * sin will give us (-b*cos, a*sin), which is equivalent to a multiplication by e^(i*theta) in the complex plane.
 
 Compared to standard position encodings, RoPE is extremely powerful. However, in MLA our KV vector is compressed, which means our K heads are inaccessible at the time we would want to apply RoPE to them[fn:6]. Because RoPE is /so powerful/, we need to take extra steps to figure out a way to make them compatible with the otherwise straightforward MLA mechanism, otherwise even outperforming normal MHA will be of minimal benefit.
 
-Luckily, MLA uniquely offers us an interesting trick. In the RoPE-less case, we just compress down and decompress back up from and to full size. However, theoretically this need not be the case. For example, if we want 16 Q heads and we compress Q down, we can decompress it back up such that it only has 12 Q heads. We can now use a /different/ decompression which decompresses back up to 4 Q heads, and we can concat them together to get our original 16 Q heads.
+Luckily, MLA uniquely offers us an interesting trick. In the RoPE-less case, we just compress down and decompress back up from and to full size. However, theoretically this need not be the case. For example, consider the case where you have a head dimension of 128. You can project up such that your "heads" are instead of a head dimension of 64. Simultaneously, you can extract a version of Q and K whose purpose is to carry the RoPE position encodings, also of size 64, from the compressed Q and K matrices. Then you can concat a copy of this to each of our shrunken heads in order to arrive back at our original head dimension of 128. In this case, we save some parameters decompressing up to a smaller size, and we can reuse the same position-encoded RoPE Q and K for each head, saving some redundant computation.
 
-You could try something similar with normal multi-headed attention, where you chop up your 16 Q heads such that RoPE is only applied to the last 4 of them. But the advantage of using the distinct decompressions to individual heads is that your new RoPE-specific heads will be constructed based off of the full compressed vector, rather than just being a partitioned-off subsection of the original. That is: the heads responsible for RoPE are aware of the contents of the other heads, which is a benefit unique to MLA's design. (Need to think on this more, it's pretty nebulous still).
+You could try something similar with normal multi-headed attention, where you chop up your Q heads such that RoPE is only applied to the bottom half of each head. But the advantage of using the compressed Q and K is that your new RoPE-specific section of each head will be constructed based off of the full compressed vector, rather than just being a partitioned-off subsection of the original. That is: each chunk will still need to independently learn a representation which leverages RoPE, rather than having that cleanly duplicated across each head. (I need to think on this a little more, it's more clear what is happening but still a little hazy on what it's advantages are)
 
 ** Experiments
 
-MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it has additional uncompression matrices whose purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full Q and K vectors.
+MLA has two components which make it different from standard multi-head attention. First, it has compression and uncompression matrices. Second, it splits the Q and K heads such that a specific section of each head's purpose is to carry RoPE position embeddings, which is abnormal practice for RoPE embeddings which are normally applied to the full Q and K vectors.
 
-It's not immediately clear which of these practices contribute to MLA's viability, assuming DeepSeek's claimed improved performance is true. For example, it's possible the low-rank factorization adds a lot, and the RoPE extension salvages some of the lost capability from the effectiveness of RoPE.  It's also possible that a dedicated part of the vector whose purpose is to carry RoPE information is the more beneficial component, and the low-rank steps are a marginal benefit. Likewise, it's also possible both of these by themselves are insufficient to see substantial gains, but together they synergize to perform well. Finally, it's possible that MLA is not inherently superior to MHA at all, but the ability to reduce the burden upon the KV cache makes it worthwhile to use anyways.
+It's not immediately clear which of these practices contribute to MLA's viability, assuming DeepSeek's claimed improved performance is true. For example, it's possible the low-rank factorization adds a lot, and the RoPE extension salvages some of the lost capability from the effectiveness of RoPE.  It's also possible that a dedicated part of the vector whose purpose is to carry RoPE information is the more beneficial component, and the low-rank steps are a marginal benefit which mostly just saves KV cache space. Likewise, it's also possible both of these by themselves are insufficient to see substantial gains, but together they synergize to perform well. Finally, it's possible that MLA is not inherently superior to MHA at all, but the ability to reduce the burden upon the KV cache makes it worthwhile to use anyways.
 
 *** Experiment 1
 
-To investigate this, we implement a variant of Multi-head Latent Attention which does not include RoPE. We instead use standard position encodings, and compare this to vanilla Multi-Head Attention using standard position encoding. This way, we can decouple the pros and cons of the RoPE components of MLA, as an ablation study. We also implement a baseline multi-query attention implementation, as a point of comparison.
+To investigate this, we implement a variant of Multi-head Latent Attention which does not include RoPE. We instead use standard learned position encodings, and compare this to vanilla Multi-Head Attention using standard position encodings. This way, we can decouple the pros and cons of the RoPE components of MLA, as an ablation study. We also implement a baseline multi-query attention implementation, as a point of comparison.
 
 Architecturally, we have full control over the lora dimension that we plan on projecting both Q and KV down to, before subsequently decompressing them back to full size.
 
-Naively, the easiest point of comparison is where we "compress" Q and KV such that the number of parameters used is the same, and no real compression actually occurs. That is, in the case where we substitute the Q projection (d_model, d_model) with two layers (d_model, d_model/2) and (d_model/2, d_model) and substitute the KV projection (d_model, 2*d_model) with two layers (d_model, (2*d_model)/3), ((2*d_model/3), d_model), we arrive at an architecture which uses the same number of parameters.
+Naively, the easiest point of comparison is where we "compress" Q and KV such that the number of parameters used is the same, and no real compression actually occurs. That is, in the case where we substitute the Q projection (d_model, d_model) with two layers (d_model, d_model/2) and (d_model/2, d_model) and substitute the KV projection (d_model, 2*d_model) with two layers (d_model, (2*d_model)/3), ((2*d_model/3), 2*d_model), we arrive at an architecture which uses the same number of parameters.
 
 The tradeoff in this experiment is very easy to understand. The parameter count is roughly identical, the MHA network has a larger KV cache size (due to needing to store full K and V), and the MLA network has a smaller KV cache size (by virtue of storing the intermediate decomposition) but requires more matrix multiplications to complete a forward pass. We can compress the KV and Q projection dimensions even further to save more memory (presumably in exchange for decreased performance), but as a pure point of comparison between MLA and MHA this seems the most direct.
 
@@ -94,9 +94,6 @@ We use a sequence length of 1024, and a batch size of 12. For all models we trai
 *** Experiment 2
 
 With experiment 1 in mind, we re-introduce Rotary Position Embeddings (RoPE) for MLA, MQA, and MHA. RoPE yields substantial performance gains in most language modeling tasks, and the important ablation from experiment 1 will tell us a substantial degree about why MLA performs the way it does. 
-
-TODO:
-- MHA with decoupled RoPE
 
 *** Experiment 3
 
@@ -119,15 +116,9 @@ TODO: kv cache results for MLA w/ RoPE
 | MHA 35M no RoPE   |              147.83 |
 | MQA 32M no RoPE   |              155.44 |
 
-In the above table we see training perplexity results for experiments 1 and 2. Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, but the results are pretty similar to MHA despite KV cache reduction.
+In the above table we see training perplexity results for experiments 1 and 2 (lower is better). Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, but the results are pretty similar to MHA despite KV cache reduction.
 
-Below we scale the above experiment to a ~300M parameter model.
-
-| Model Description | Training Perplexity | KV Cache / Token / Layer |
-|-------------------+---------------------+--------------------------|
-| MHA 324M no RoPE  |               35.91 |                    49152 |
-| MLA 323M no RoPE  |               36.99 |                    16368 |
-| MQA 277M no RoPE  |               37.91 |                     3072 |
+We also see below our training curves for each of these experiments, which seem appropriate for our experiments.
 
 [[./figures/mha_rope_training_curve.png]]
 
@@ -141,7 +132,18 @@ Below we scale the above experiment to a ~300M parameter model.
 
 [[./figures/mqa_training_curve.png]]
 
+Below we scale the above experiment to a ~300M parameter model.
+
+| Model Description | Training Perplexity | KV Cache / Token / Layer |
+|-------------------+---------------------+--------------------------|
+| MHA 324M no RoPE  |               35.91 |                    49152 |
+| MLA 323M no RoPE  |               36.99 |                    16368 |
+| MQA 277M no RoPE  |               37.91 |                     3072 |
+
+
 An interesting artifact of storing the intermediate kv vector is that this will reduce the KV cache burden even if this operation does not necessarily constitute compression. With no RoPE, at a kv_proj_dim of 2/3 d_model, two layers (X, r) -> (r, 2*X) have the same number of parameters as one layer (X, 2*X), and likewise for 0.5*d_model for q_proj_dim. What this means is that these two models will have equal parameter counts, and these two matrices can be multiplied together to yield a matrix which is the same size as the original W_kv matrix. /Despite that/, you can still store the intermediate vector of (B, k_len, 1/3*d_model) instead of the resulting vector of (B, k_len, d_model), which constitutes a 66% reduction in KV cache burden without the need for any compression.
+
+Overall we can see MLA remain competitive with MHA and outperforming MQA despite a substantial reduction in KV cache size. 
 
 *** Inference Time Experiments
 
@@ -149,28 +151,31 @@ Contrary to what they describe in the DeepSeek-V2 paper, the modeling code for t
 
 This is because it's slower if you have to do the decompression layer to retrieve KV from compressed KV, and if you have extra space, it's faster to just store those values directly.  It takes more memory to do full KV caching, so it's really important to implement compression caching if you want to do batched inference and serve to customers. It's also important to recognize that these operations are (roughly) equivalent -- the only major difference is that we cache earlier or later along the inference logic flow, not that we are ending up with substantially different values one way or the other.
 
-You may ask: how different is the performance between compressed caching and full KV caching? We will implement two versions of ropeless MLA to see how much different it is: one using a compressed KV cache and one using the standard full KV cache similar to their open source modeling code. 
+You may ask: how different is the performance between compressed caching and full KV caching? We will implement two versions of ropeless MLA to see how much different it is: one using a compressed KV cache and one using the standard full KV cache similar to their open source modeling code. We further train two models using MLA: one which is identical to the reference model except substituting MLA for MHA, and one which adds an additional layer after reducing the parameter count via compression in each transformer block.
 
 [[./figures/inference_100_in.png]]
 
 [[./figures/inference_100_out.png]]
 
-The above plots follow fairly nicely from the architectures they represent. The reference MHA implementation with full KV caching is faster than all the other models, since it performs fewer matmuls (due to not doing compression -> decompression operations). The 31M model is faster than the 34.6M model, and for both models full KV caching is faster than compressed KV caching (due to using fewer matmuls to uncompress K and V).
+The above plots follow fairly nicely from the architectures they represent. The reference MHA implementation with full KV caching is faster than all the other models, since it performs fewer matmuls (due to not doing compression -> decompression operations). The default MLA model is faster than the one with the extra layer, and for both models full KV caching is faster than compressed KV caching (due to using fewer matmuls to uncompress K and V).
 
 In all cases, we substantially see improved autoregressive generation time compared to not using a KV cache, and in the compressed KV case we see the memory requirements slashed a very large amount. 
 
 ** Discussion
 
-In both cases, the network performed admirably. Likewise, in both cases, we substantially address the KV cache problem of scaling the model to very large sizes -- that the KV cache burden can be reduced substantially with not too much loss in performance is significant. In addition, the memory saved will grow with the size of the network: whereas Multi-Head Attention uses (2 * n_heads * d_heads * layers) KV cache per token, in comparison the ropeless MLA uses (d_compression * layer) or roughly (4 * d_heads * layers). At large model size with many heads, this is extremely, extremely large. [Madsys-dev](https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md) with a larger model saw a reduction from 81.92 kB cache per token to 1.15 kB per token, a reduction of 98.6% in size. To bring the KV cache from a major architectural bottleneck to a relative non-issue is certainly extremely noteworthy, even if the claimed superiority may not be a blanket case. 
+In both cases, the network performed admirably. Likewise, in both cases, we substantially address the KV cache problem of scaling the model to very large sizes -- that the KV cache burden can be reduced substantially with not too much loss in performance is significant. In addition, the memory saved will grow with the size of the network: whereas Multi-Head Attention uses (2 * n_heads * d_heads * layers) KV cache per token, in comparison the ropeless MLA uses (d_compression * layer) or roughly (4 * d_heads * layers). At large model size with many heads, this is extremely, extremely large. [Madsys-dev](https://github.com/madsys-dev/deepseekv2-profile/blob/924174cb5dc11fad24bdaad3fd820ebf87506368/workspace/blog/optimizing-mla.md) with a larger model saw a reduction from 81.92 kB cache per token to 1.15 kB per token, a reduction of 98.6% in size. To bring the KV cache from a major architectural bottleneck to a relative non-issue is certainly extremely noteworthy, even if the claimed superiority may not be a blanket case.
 
-However, it does seem to have lower throughput compared to normal attention -- both compressing + adding additional layers and the addition of two matrices to replace one in every attention block adds some subtle but relatively noticable cost to inference time. You can use full KV caching to speed this up, but then you lose out on the largest benefit of the architecture in the first place (the very small KV cache), while still remaining slower than regular MHA. It's important to point this out relative to variants like multi-query attention, which are worse-performing than MLA, but are expressly /faster/ than regular multi-head attention due to reducing the total computation performed. 
+From our experiments, we have some weak evidence that the matrix decomposition component of the MLA mechanism could be a primary driving factor in it's increased performance, and the decoupled RoPE allows us to recapture the benefits of using such a superior positional encoding, but the results are somewhat within noise and the thing we have primarily demonstrated is its similar performance to MHA, rather than it's superiority. 
 
-Overall, MLA's claimed equivalent-or-superior performance over MHA from the DeepSeek-V2 paper remains somewhat unclear. This could be for a variety of reasons:
+However, it does seem to have lower throughput compared to normal attention -- both compressing + adding additional layers and the addition of two matrices to replace one in every attention block adds some subtle but relatively noticable cost to inference time. You can use full KV caching to speed this up, but then you lose out on the largest benefit of the architecture in the first place (the very small KV cache), while still remaining slower than regular MHA. It's important to point this out relative to variants like multi-query attention, which are worse-performing than MLA, but are expressly /faster/ than regular multi-head attention due to reducing the total computation performed. This likely can be addressed somewhat by merging adjacent matrix multiplications as alluded to in the paper -- these were not implemented here since optimizing the implementation was somewhat outside the scope of this project.  
 
-1. The RoPE component of MLA, beyond being a simple hack, is what elevates the performance of MLA to at-or-above MHA
-2. The superior performance of MLA emerges at larger scales, where both the model and the input sequences are much larger.
-3. MHA and MLA could perform more comparably when dealing with actual measured capabilities, compared to training data perplexity -- it could be that MLA's higher perplexity represents a resistance to overfitting beyond being a genuinely useful metric for measuring performance.
-4. MLA being synergistic with DeepSeek-V2's Mixture-of-Experts architecture, rather than being a general improvement.
+Overall, MLA's claimed equivalent-or-superior performance over MHA from the DeepSeek-V2 paper is surprisingly plausible, but remains still somewhat unclear from our experiments here. We were not able to see clearly superior performance despite arriving at very competitive results with vanilla multi-headed attention, which could be for a variety of reasons:
+
+1. The introduction of additional projection dimensions introduces architecture hyperparameters which increases the burden of effective hyperparameter search, and it's possible with different values we could have observed clearly better results. 
+2. The superior performance of MLA could potentially shine at larger scales, where both the model and the input sequences are much larger. It's possible our modest experiments are a poor environment for illustrating the gap between these methods.
+3. MHA and MLA could perform differently when dealing with actual measured capabilities, rather than simply training data perplexity -- it could be that perplexity values do not capture how well the representations learned by these models could be transformed into downstream capabilities, which are all that was reported in the original DeepSeek-V2 paper.
+4. MLA may be extra synergistic with DeepSeek-V2's Mixture-of-Experts architecture, rather than being a general improvement.
+5. There may be lingering issues with my implementation. Neural networks want to work[fn:7], and often fail silently -- if there's a bug in my implementation, the close performance between MLA and MHA could be more impressive than it seems.
 
 Future work here could include:
 - Using a much larger model on a bigger dataset to measure capability directly
@@ -181,13 +186,23 @@ MLA has demonstrated it's usefulness here in scaling up very large models. Howev
 
 ** Appendix: Other Learnings
 
-- Grad scaling / gradient accumulation
-- Torch autocast for mixed precision training
-- Torch profiling for understanding bottlenecks
-- Register buffers
-- Designating specific Q and K heads in MLA as "RoPE heads" does much much worse
+This section holds some very brief things I had to learn to enable me to write this writeup / code up the experiments. These are not that relevant to the main body of work, this is mostly just a log for me to hold adjacent things I had to learn while doing this project. 
+
+*** Extra Experiments
+
+Designating specific Q and K heads in MLA as "RoPE heads" does much much worse. This was originally performed because I misunderstood the design of MLA's decoupled RoPE, and thought that it was designating specific heads as purposed ones to carry position information. This still outperforms using learned position encoding (RoPE is very powerful), but does worse than MQA with RoPE so overall it's not recommended.
+
+*** Interesting Pytorch Things
+
+Efficient training was done using [[https://pytorch.org/docs/stable/notes/amp_examples.html][torch's mixed precision training]] functions. I wrote everything from scratch rather than defaulting to something like [[https://github.com/vllm-project/vllm][vLLM]] because I wanted to design a fair experiment and also specifically ensure I understood all the components very well. Things performed to enable this include gradient scaling, gradient accumulation, autocast to fp16, and some other minor things.
+
+I used the [[https://pytorch.org/docs/stable/profiler.html][torch profiler]] in this project to figure out where my bottlenecks were, because my forward passes were taking upwards of 15 seconds at first for some reason. I used this to discover that the reshape operations were really expensive (likely because [[https://stackoverflow.com/questions/49643225/whats-the-difference-between-reshape-and-view-in-pytorch][a reshaped tensor may or not be a copy]] of the original tensor). The profiler was kind of finicky in general, but it was helpful to figure out why things were going wrong.
+
+Fighting through understanding RoPE led me to learn about [[https://discuss.pytorch.org/t/what-pytorch-means-by-buffers/120266][buffers]], which are just "things saved in the state dict which are not parameters". This was important for saving the cosine and sine components of RoPE. I had to read a lot about [[https://rockt.github.io/2018/04/30/einsum][einsum notation]] to understand the various implementations of RoPE floating around but I ended up not using them in my own implementation because I think it would have been too confusing debugging something this involved with notation I didn't already understand very well.
 
 * Footnotes
+
+[fn:7] I've seen this referred to as Karpathy's Law https://karpathy.github.io/2019/04/25/recipe/ 
 
 [fn:6] Based on our implementation, you might ask why we can't just uncompress the KV vector to full size and then apply RoPE to it. The reason is because during inference, DeepSeek-V2 absorbs the uncompression matrix into the matrix which follows it, because there's no intermediate nonlinearity preventing us from doing so. This is a speedup, but it motivates the need for RoPE applied from the compressed vectors.
 
