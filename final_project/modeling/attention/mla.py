@@ -155,38 +155,29 @@ class RopelessMLA(torch.nn.Module):
     
 # TODO: Implement with RoPE
 class MLA(torch.nn.Module):
-    def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0, rope_heads=1):
+    def __init__(self, d_model, n_heads, max_len=1024, rope_theta=10000.0):
         super().__init__()
         self.d_model = d_model
         self.n_heads = n_heads
-        self.rope_heads = rope_heads
-        self.dim_heads = n_heads - rope_heads
         self.dh = d_model // n_heads
         self.q_proj_dim = d_model // 2
         self.kv_proj_dim = (2*d_model) // 3
 
-        self.q_nope_dim = self.dim_heads * (d_model // n_heads)
-        self.q_rope_dim = self.rope_heads * (d_model // n_heads)
-
-        self.k_nope_dim = self.dim_heads * (d_model // n_heads)
-        self.k_rope_dim = self.rope_heads * (d_model // n_heads)
+        self.qk_nope_dim = 3 * (self.dh // 4)
+        self.qk_rope_dim = self.dh // 4
         
         ## Q projections
         # Lora
         self.W_dq = torch.nn.Parameter(0.01*torch.randn((d_model, self.q_proj_dim)))
-        self.W_uq = torch.nn.Parameter(0.01*torch.randn((self.q_proj_dim, self.q_nope_dim)))
+        self.W_uq = torch.nn.Parameter(0.01*torch.randn((self.q_proj_dim, self.d_model)))
         self.q_layernorm = torch.nn.LayerNorm(self.q_proj_dim)
-        # Rope
-        self.W_qr = torch.nn.Parameter(0.01*torch.randn((self.q_proj_dim, self.q_rope_dim)))
         
         ## KV projections
         # Lora
-        self.W_dkv = torch.nn.Parameter(0.01*torch.randn((d_model, self.kv_proj_dim)))
+        self.W_dkv = torch.nn.Parameter(0.01*torch.randn((d_model, self.kv_proj_dim + self.qk_rope_dim)))
         self.W_ukv = torch.nn.Parameter(0.01*torch.randn((self.kv_proj_dim,
-                                                          self.d_model + self.k_nope_dim)))
+                                                          self.d_model + (self.n_heads * self.qk_nope_dim))))
         self.kv_layernorm = torch.nn.LayerNorm(self.kv_proj_dim)
-        # Rope
-        self.W_kr = torch.nn.Parameter(0.01*torch.randn((d_model, self.k_rope_dim)))
         
         # output projection
         self.W_o = torch.nn.Parameter(0.01*torch.randn((d_model, d_model)))
@@ -214,41 +205,45 @@ class MLA(torch.nn.Module):
         compressed_q = x @ self.W_dq
         compressed_q = self.q_layernorm(compressed_q)
         Q = compressed_q @ self.W_uq
-        Q = Q.view(B, -1, self.dim_heads, self.dh).transpose(1,2)
+        Q = Q.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        Q, Q_for_rope = torch.split(Q, [self.qk_nope_dim, self.qk_rope_dim], dim=-1)
 
         # Q Decoupled RoPE
-        Q_for_rope = compressed_q @ self.W_qr
-        Q_for_rope = Q_for_rope.view(B, -1, self.rope_heads, self.dh).transpose(1,2)
-        cos_q = self.cos_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
-        sin_q = self.sin_cached[:, :, past_length:past_length+S, :self.dh//2].repeat(1, 1, 1, 2)
+        cos_q = self.cos_cached[:, :, past_length:past_length+S, :self.qk_rope_dim//2].repeat(1, 1, 1, 2)
+        sin_q = self.sin_cached[:, :, past_length:past_length+S, :self.qk_rope_dim//2].repeat(1, 1, 1, 2)
         Q_for_rope = apply_rope_x(Q_for_rope, cos_q, sin_q)
 
         # KV Projections
         if kv_cache is None:
             compressed_kv = x @ self.W_dkv
+            compressed_kv, K_for_rope = torch.split(compressed_kv,
+                                                    [self.kv_proj_dim, self.qk_rope_dim],
+                                                    dim=-1)
             compressed_kv = self.kv_layernorm(compressed_kv)
         else:
-            new_kv = x @ self.W_dkv
-            new_kv = self.kv_layernorm(new_kv)
-            compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
+            pass #not implemented yet
+            #new_kv = x @ self.W_dkv
+            #new_kv = self.kv_layernorm(new_kv)
+            #compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
 
         KV = compressed_kv @ self.W_ukv
-        K, V = torch.split(KV, [self.k_nope_dim, self.d_model], dim=-1)
-
-        S_full = K.size(1)
+        KV = KV.view(B, -1, self.n_heads, self.dh+self.qk_nope_dim).transpose(1,2)
+        K, V = torch.split(KV, [self.qk_nope_dim, self.dh], dim=-1)
+        S_full = K.size(2)        
 
         # K Rope
-        K_for_rope = x @ self.W_kr
-        K_for_rope = K_for_rope.view(B, -1, self.rope_heads, self.dh).transpose(1,2)
-        cos_k = self.cos_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
-        sin_k = self.sin_cached[:, :, :S_full, :self.dh//2].repeat(1, 1, 1, 2)
-        K = K.view(B, -1, self.dim_heads, self.dh).transpose(1,2)
+        K_for_rope = K_for_rope.view(B, -1, 1, self.qk_rope_dim).transpose(1,2)
+        cos_k = self.cos_cached[:, :, :S_full, :self.qk_rope_dim//2].repeat(1, 1, 1, 2)
+        sin_k = self.sin_cached[:, :, :S_full, :self.qk_rope_dim//2].repeat(1, 1, 1, 2)
         K_for_rope = apply_rope_x(K_for_rope, cos_k, sin_k)
 
-        # split into multiple heads                        
-        q_heads = torch.cat([Q, Q_for_rope], dim=1)
-        k_heads = torch.cat([K, K_for_rope], dim=1)
-        v_heads = V.view(B, -1, self.n_heads, self.dh).transpose(1,2)
+        # apply position encoding to each head
+        K_for_rope = K_for_rope.repeat(1, self.n_heads, 1, 1)
+
+        # split into multiple heads
+        q_heads = torch.cat([Q, Q_for_rope], dim=-1)
+        k_heads = torch.cat([K, K_for_rope], dim=-1)
+        v_heads = V # already reshaped before the split
 
         # make attention mask
         mask = torch.ones((S,S_full), device=x.device)
@@ -258,7 +253,6 @@ class MLA(torch.nn.Module):
         sq_mask = mask == 1
 
         # attention
-        # Scaling factor needs to be changed -- it is dh + dh_r
         x = torch.nn.functional.scaled_dot_product_attention(
             q_heads, k_heads, v_heads,
             attn_mask=sq_mask
