@@ -215,7 +215,7 @@ Designating specific Q and K heads in MLA as "RoPE heads" does much much worse. 
 
 *** Interesting Pytorch Things
 
-Efficient training was done using [[https://pytorch.org/docs/stable/notes/amp_examples.html][torch's mixed precision training]] functions. I wrote everything from scratch rather than defaulting to something like [[https://github.com/vllm-project/vllm][vLLM]] because I wanted to design a fair experiment and also specifically ensure I understood all the components very well. Things performed to enable this include gradient scaling, gradient accumulation, autocast to fp16, and some other minor things.
+Efficient training was done using [[https://pytorch.org/docs/stable/notes/amp_examples.html][torch's mixed precision training]] functions. I wrote everything from scratch rather than defaulting to something like a huggingface model / the huggingface trainer because I wanted to design a fair experiment and also specifically ensure I understood all the components very well. Things performed to enable this include gradient scaling, gradient accumulation, autocast to fp16, and some other minor things.
 
 I used the [[https://pytorch.org/docs/stable/profiler.html][torch profiler]] in this project to figure out where my bottlenecks were, because my forward passes were taking upwards of 15 seconds at first for some reason. I used this to discover that the reshape operations were really expensive (likely because [[https://stackoverflow.com/questions/49643225/whats-the-difference-between-reshape-and-view-in-pytorch][a reshaped tensor may or not be a copy]] of the original tensor). The profiler was kind of finicky in general, but it was helpful to figure out why things were going wrong.
 
