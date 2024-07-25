@@ -15,7 +15,7 @@ Multi-head Latent Attention (MLA) is a variant of multi-head attention which was
 
 In comparison, MLA accomplishes this by using a low-rank factorized projection matrix, operating a bit like multi-query attention where instead of repeating a single head several times, you decompress a latent vector to yield a unique, appropriate KV for each particular head. DeepSeek claims this not only helps the memory overhead, but also /improves/ the model rather than suffering for its inclusion. The basic idea is as follows:
 
-1. Replace the QKV computation by using low rank factorization to turn one matrix of dim $(in, out)$ to two matrices of $(in, lora_rank)$ and $(lora_rank, out)$.
+1. Replace the QKV computation by using low rank factorization to turn one matrix of dim $(in, out)$ to two matrices of $(in, rank)$ and $(rank, out)$.
 2. Project the compressed KV latent vector for each head to get the full K and V head corresponding to each Q head.
 3. Cache the compressed latent KV vector instead of each of the KV heads, and compute the KV heads on the fly from the latent vector.
 
@@ -40,7 +40,7 @@ In our case, we are hoping that we can preserve the functionality of $W_{qkv}$ a
 
 *** Aside: Perturbations in Low-Rank Decomposition
 
-When we apply gradient updates to these decomposed matrices, it's mathematically a little different from perturbing the full size matrix. Specifically, when you make a gradient update perturbation to the decomposed matrix, their composition will remain of rank r no matter what -- you are only able to travel from rank r matrix to rank r matrix, and this is immutable because of the shape of the matrices. This contrasts with a regular, non-decomposed matrix, where our perturbation can move us in any direction, even if that increases the rank.
+When we apply gradient updates to these decomposed matrices, it's mathematically a little different from perturbing the full size matrix. Specifically, when you make a gradient update perturbation to the decomposed matrix, their composition will remain of rank $r$ no matter what -- you are only able to travel from rank $r$ matrix to rank $r$ matrix, and this is immutable because of the shape of the matrices. This contrasts with a regular, non-decomposed matrix, where our perturbation can move us in any direction, even if that increases the rank.
 
 In this case, are creating a /manifold/ inside the space of all matrices. It's a subspace defined by the columns of one matrix and the rows of the other matrix. When we make perturbations in these matrices, we move along this manifold in the full space. If there's a point on this manifold which minimizes the loss, it's all good -- if there's a point off this manifold which minimizes the loss, the best we can do is a projection onto this manifold. 
 
