@@ -10,14 +10,13 @@ def load_model(model_path, device, use_mla=False, use_mqa=False, use_rope=False)
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
                      max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa,
                      use_rope=use_rope)
-    model.load_state_dict(torch.load(model_path))
+    #model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
     return model
 
 def calculate_cache_size(kv_cache):
     # MHA / MQA
-    print(kv_cache[0].size())
     if isinstance(kv_cache[0], tuple):
         total_params = sum(k.numel() + v.numel() for k, v in kv_cache)
         if len(kv_cache[0][0].size()) == 3:
@@ -78,6 +77,7 @@ def main():
     model_path = "./weights/model_weights.pt"
     use_mla=True
     use_mqa=False
+    use_rope=False
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
     #use_mqa=True
@@ -89,7 +89,7 @@ def main():
     num_tokens_to_generate = 20
 
     # Load the model
-    model = load_model(model_path, device, use_mla=use_mla, use_mqa=use_mqa)
+    model = load_model(model_path, device, use_mla=use_mla, use_mqa=use_mqa, use_rope=use_rope)
 
     # Load the tokenizer
     tokenizer = HFTokenizer()

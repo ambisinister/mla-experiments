@@ -141,14 +141,14 @@ Likewise, we invert the previous test and use a variable prompt of between 20 an
 
 TODO: kv cache results for MLA w/ RoPE
 
-| Model             | Training Perplexity |
-|-------------------+---------------------|
-| *MHA 35M RoPE*    |             *94.31* |
-| MLA 35M RoPE      |               96.70 |
-| MQA 32M RoPE      |              102.18 |
-| *MLA 35M no RoPE* |            *142.77* |
-| MHA 35M no RoPE   |              147.83 |
-| MQA 32M no RoPE   |              155.44 |
+| Model             | Training Perplexity | KV Cache / Token / Layer |
+|-------------------+---------------------+--------------------------|
+| *MHA 35M RoPE*    |             *94.31* |                     8192 |
+| MLA 35M RoPE      |               96.70 |                      ??? |
+| MQA 32M RoPE      |              102.18 |                      512 |
+| *MLA 35M no RoPE* |            *142.77* |                     2728 |
+| MHA 35M no RoPE   |              147.83 |                     8192 |
+| MQA 32M no RoPE   |              155.44 |                      512 |
 
 In the above table we see training perplexity results for experiments 1 and 2 (lower is better). Specifically, we see slightly better results for MLA in the case where no RoPE embeddings are used. In the case where we use RoPE, there's a bit of additional parameter search necessary, but the results are pretty similar to MHA despite KV cache reduction.
 
