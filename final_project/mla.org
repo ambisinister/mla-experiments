@@ -17,7 +17,12 @@ There is also an additional component of MLA which outlines /decoupled RoPE/. In
 
 Using two matrices instead of one, in theory, has some tradeoffs. The practice of factorizing a matrix (in this case the Q and KV matrices) into a product of matrices (in this case the compression and decompression matrices) is called /matrix decomposition/. The case here, where we are decomposing a matrix (a, b) into two matrices (a, r), (r, b), is called /rank factorization/. A matrix of any shape can be decomposed into two matrices this way, but the lower the value of r the lower the space of possible matrices that can be perfectly reconstructed.
 
-<<insert low rank manim gif here>>
+#+BEGIN_EXPORT html
+<video width="320" height="240" controls>
+  <source src="./figures/LowRankDecomposition.mp4" type="video/mp4">
+Your browser does not support videos
+</video>
+#+END_EXPORT
 
 When using low-rank factorization for layers in a neural network, the good things are that the compressed matrices use fewer parameters[fn:5], and are somewhat more expressive (by virtue of having two layers sometimes separated by a nonlinearity like a layernorm or activation). They can end up roughly approximate or equivalent to one larger matrix, so in theory you could multiply the weights of these matrices together to retrieve an approximation of your original matrix.
 
