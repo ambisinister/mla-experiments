@@ -216,17 +216,26 @@ class MLA(torch.nn.Module):
         # KV Projections
         if kv_cache is None:
             compressed_kv = x @ self.W_dkv
-            compressed_kv, K_for_rope = torch.split(compressed_kv,
-                                                    [self.kv_proj_dim, self.qk_rope_dim],
-                                                    dim=-1)
-            compressed_kv = self.kv_layernorm(compressed_kv)
+            KV_for_lora, K_for_rope = torch.split(compressed_kv,
+                                                  [self.kv_proj_dim, self.qk_rope_dim],
+                                                  dim=-1)
+            KV_for_lora = self.kv_layernorm(KV_for_lora)
         else:
-            pass #not implemented yet
-            #new_kv = x @ self.W_dkv
-            #new_kv = self.kv_layernorm(new_kv)
-            #compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
+            new_kv = x @ self.W_dkv
+            compressed_kv = torch.cat([kv_cache, new_kv], dim=1)
+            new_kv, new_K_for_rope = torch.split(new_kv,
+                                                 [self.kv_proj_dim, self.qk_rope_dim],
+                                                 dim=-1)
+            old_kv, old_K_for_rope = torch.split(kv_cache,
+                                                 [self.kv_proj_dim, self.qk_rope_dim],
+                                                 dim=-1)
+            new_kv = self.kv_layernorm(new_kv)
+            old_kv = self.kv_layernorm(old_kv)
+            KV_for_lora = torch.cat([old_kv, new_kv], dim=1)
+            K_for_rope = torch.cat([old_K_for_rope, new_K_for_rope], dim=1)
+            
 
-        KV = compressed_kv @ self.W_ukv
+        KV = KV_for_lora @ self.W_ukv
         KV = KV.view(B, -1, self.n_heads, self.dh+self.qk_nope_dim).transpose(1,2)
         K, V = torch.split(KV, [self.qk_nope_dim, self.dh], dim=-1)
         S_full = K.size(2)        

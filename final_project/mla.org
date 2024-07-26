@@ -139,12 +139,10 @@ Likewise, we invert the previous test and use a variable prompt of between 20 an
 
 *** Modeling Results
 
-TODO: kv cache results for MLA w/ RoPE
-
 | Model             | Training Perplexity | KV Cache / Token / Layer |
 |-------------------+---------------------+--------------------------|
 | *MHA 35M RoPE*    |             *94.31* |                     8192 |
-| MLA 35M RoPE      |               96.70 |                      ??? |
+| MLA 35M RoPE      |               96.70 |                     2856 |
 | MQA 32M RoPE      |              102.18 |                      512 |
 | *MLA 35M no RoPE* |            *142.77* |                     2728 |
 | MHA 35M no RoPE   |              147.83 |                     8192 |

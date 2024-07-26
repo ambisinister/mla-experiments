@@ -77,7 +77,7 @@ def main():
     model_path = "./weights/model_weights.pt"
     use_mla=True
     use_mqa=False
-    use_rope=False
+    use_rope=True
     #model_path = "./weights/31m_model.pt"
     #use_mla=True
     #use_mqa=True
