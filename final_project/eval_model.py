@@ -7,7 +7,7 @@ def load_model(model_path, device, use_mla=False, use_mqa=False, use_rope=False)
     #                  max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa)
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
                      max_seq_len=1024, use_mla=use_mla, use_mqa=use_mqa,
-                     use_rope=use_rope)
+                     use_rope=use_rope, use_decoupled=True)
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     model.eval()
@@ -42,7 +42,7 @@ def main():
     #model_path = "./weights/35m_model.pt"
     #model_path = "./weights/mqa_model.pt"
     model_path = "./weights/model_weights.pt" 
-    use_mla = True
+    use_mla = False
     use_mqa = False
     use_rope = True
     data_path = "./data/packed_data.npy"

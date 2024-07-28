@@ -1,7 +1,7 @@
 import torch
 import math
 
-from modeling.attention.mha import MHA, Rope_MHA
+from modeling.attention.mha import MHA, Rope_MHA, Decoupled_Rope_MHA
 from modeling.attention.mqa import RopelessMQA, Rope_MQA
 from modeling.attention.mla import RopelessMLA_Uncompressed, RopelessMLA, MLA
 from modeling.layers.customlayers import CustomLinear, CustomEmbedding
@@ -9,7 +9,7 @@ from modeling.layers.customlayers import CustomLinear, CustomEmbedding
 class TransformerDecoderBlock(torch.nn.Module):
 
     def __init__(self, d_model, n_heads, use_mla=True, use_mqa=False,
-                 cache_compress=True, use_rope=False):
+                 cache_compress=True, use_rope=False, use_decoupled=False):
         super().__init__()
         self.norm1 = torch.nn.LayerNorm((d_model,))
         if use_mla:
@@ -32,8 +32,12 @@ class TransformerDecoderBlock(torch.nn.Module):
                 self.mha = RopelessMQA(d_model, n_heads)
         else:
             if use_rope:
-                print("using RoPE")
-                self.mha = Rope_MHA(d_model, n_heads)
+                if use_decoupled:
+                    print("using decoupled RoPE")
+                    self.mha = Decoupled_Rope_MHA(d_model, n_heads)
+                else:
+                    print("using RoPE")
+                    self.mha = Rope_MHA(d_model, n_heads)
             else:
                 self.mha = MHA(d_model, n_heads)
         self.norm2 = torch.nn.LayerNorm((d_model,))
@@ -57,7 +61,8 @@ class GPTModel(torch.nn.Module):
 
     def __init__(self, d_model, n_heads, layers, vocab_size,
                  max_seq_len, use_mla=False, use_mqa=False,
-                 cache_compress=True, use_rope=False):
+                 cache_compress=True, use_rope=False,
+                 use_decoupled=False):
         super().__init__()
         self.use_rope = use_rope
 
@@ -69,7 +74,8 @@ class GPTModel(torch.nn.Module):
             TransformerDecoderBlock(d_model, n_heads,
                                     use_mla=use_mla, use_mqa=use_mqa,
                                     cache_compress=cache_compress,
-                                    use_rope=use_rope)
+                                    use_rope=use_rope,
+                                    use_decoupled=use_decoupled)
             for _ in range(layers)
         ])
 
