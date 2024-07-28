@@ -15,7 +15,7 @@ There is also an additional component of MLA which outlines /decoupled RoPE/. In
 You need to set up the experiment to do everything in this repo. I haven't tested this sequence, but this should work roughly to get you off the ground.
 
 ```
-cd final_project/data/
+cd ./data/
 python download_data.py
 python hftokenizer.py
 cp hftokenizer ../
