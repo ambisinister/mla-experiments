@@ -38,7 +38,7 @@ def train():
     #                  max_seq_len=1024, use_mla=True, use_mqa=False)
 
     model = GPTModel(d_model=512, n_heads=16, layers=8, vocab_size=10000,
-                     max_seq_len=1024, use_rope=True, use_decoupled=True)
+                     max_seq_len=1024, use_mla=True)
     param_count = sum(p.numel() for p in model.parameters())
     print("Model has", param_count, "parameters.")
 

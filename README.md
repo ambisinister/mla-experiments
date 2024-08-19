@@ -12,14 +12,10 @@ There is also an additional component of MLA which outlines /decoupled RoPE/. In
 
 ## Usage
 
-You need to set up the experiment to do everything in this repo. I haven't tested this sequence, but this should work roughly to get you off the ground.
+You need to set up the experiment to do everything in this repo. Once you have everything installed, run the following
 
 ```
-cd ./data/
-python download_data.py
-python hftokenizer.py
-cp hftokenizer ../
-cd ../
+sh prepare_for_use.sh
 ```
 
 To run an experiment, we can use the following command
